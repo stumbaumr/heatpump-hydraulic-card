@@ -1847,6 +1847,36 @@
     check(keys.includes('series_buffer') && keys.includes('bypass_valve'), 'editor offers the series buffer and its bypass valve');
   }
 
+  // 18n. fan speed: the fan follows its own speed entity (it runs on after the compressor stops), else the running state
+  {
+    const p = 'panasonic_heat_pump';
+    const st = (extra = {}) => toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['34', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_fan1_motor_speed`]: ['700', 'R/min'], ...extra,
+    });
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(st()));
+    check(r.entities.fan_speed === `sensor.${p}_main_fan1_motor_speed`, `HeishaMon fan speed from fan 1 (${r.entities.fan_speed})`);
+    const fan = (c) => c.shadowRoot.getElementById('fan');
+    let card = mount({ preset: 'heishamon' }, hassOf(st())); await wait(20);
+    check(fan(card).classList.contains('on') && parseFloat(card.style.getPropertyValue('--hfc-fan')) > 0, 'the fan runs on after the compressor stops');
+    card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: ['0', 'R/min'], [`sensor.${p}_main_compressor_freq`]: ['30', 'Hz'] })); await wait(5);
+    check(!fan(card).classList.contains('on'), 'a fan speed of 0 stops the fan, also with the compressor running');
+    card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: ['900', 'R/min'] })); await wait(5);
+    const fast = parseFloat(card.style.getPropertyValue('--hfc-fan'));
+    card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: ['300', 'R/min'] })); await wait(5);
+    check(fast < parseFloat(card.style.getPropertyValue('--hfc-fan')), 'a higher fan speed turns the fan faster');
+    card.remove();
+    card = mount({ entities: { flow: 'sensor.f', compressor: 'binary_sensor.c', fan_speed: 'binary_sensor.fan' } },
+      hassOf(toStates({ 'sensor.f': ['35', '°C'], 'binary_sensor.c': 'off', 'binary_sensor.fan': 'on' }))); await wait(20);
+    check(fan(card).classList.contains('on'), 'a binary fan entity turns the fan');
+    card.remove();
+    card = mount({ entities: { flow: 'sensor.f', compressor: 'binary_sensor.c' } }, hassOf(toStates({ 'sensor.f': ['35', '°C'], 'binary_sensor.c': 'on' }))); await wait(20);
+    check(fan(card).classList.contains('on'), 'without a fan entity the fan follows the running state');
+    card.remove();
+    check(C._formSchema({}).schema.flatMap(function keysOf(n) { return n.schema ? n.schema.flatMap(keysOf) : [n.name]; }).includes('fan_speed'), 'editor offers the fan speed');
+  }
+
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
   {
     const s = setups[0];
