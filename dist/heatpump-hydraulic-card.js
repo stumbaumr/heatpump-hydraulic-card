@@ -400,8 +400,8 @@ const HFC_PRESETS = {
     name: 'Panasonic Aquarea (HeishaMon)',
     tested: true,
     unit_style: 'panasonic',
-    // The water pump sits in the heat pump (outdoor unit of the monobloc, hydro module of the split) and also runs for hot water.
-    unit_pump: true,
+    // The primary pump sits in the heat pump (outdoor unit of the monobloc, hydro module of the split) and also runs for hot water.
+    primary_pump: true,
     auto_circuits: false,
     detect: (ctx) => {
       const id = ctx.match(/^sensor\.(.+)_main_main_outlet_temp$/, 'aquarea');
@@ -963,7 +963,7 @@ const HFC_EDITOR = {
     flow_speed: 'Animation speed', source_spread: 'Show source spread',
     theme: 'Card theme', theme_auto: 'Automatic (dashboard)', theme_night: 'Night', theme_contrast: 'High contrast', fullscreen: 'Full-screen button',
     wall_timeout: 'Hide controls after (seconds, 0 = never)',
-    hc_return_label: 'Show circuit return temperature', unit_pump: 'Water pump inside the heat pump', series_buffer: 'Series buffer in the return (with bypass valve)', hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name', hc4_name: 'Circuit 4 name', hc5_name: 'Circuit 5 name', hc6_name: 'Circuit 6 name',
+    hc_return_label: 'Show circuit return temperature', primary_pump: 'Primary pump', series_buffer: 'Series buffer in the return (with bypass valve)', hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name', hc4_name: 'Circuit 4 name', hc5_name: 'Circuit 5 name', hc6_name: 'Circuit 6 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_hc4: 'Heating circuit 4', sec_hc5: 'Heating circuit 5', sec_hc6: 'Heating circuit 6', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit', sec_cutouts: 'Details: cut-out counters',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
@@ -1025,7 +1025,7 @@ const HFC_EDITOR = {
     flow_speed: 'Animationsgeschwindigkeit', source_spread: 'Quellenspreizung anzeigen',
     theme: 'Kartendarstellung', theme_auto: 'Automatisch (Dashboard)', theme_night: 'Nacht', theme_contrast: 'Hoher Kontrast', fullscreen: 'Vollbild-Schaltfläche',
     wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
-    hc_return_label: 'Heizkreis-Rücklauf anzeigen', unit_pump: 'Wasserpumpe in der Wärmepumpe', series_buffer: 'Reihenpuffer im Rücklauf (mit Bypass-Ventil)', hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3', hc4_name: 'Name Heizkreis 4', hc5_name: 'Name Heizkreis 5', hc6_name: 'Name Heizkreis 6',
+    hc_return_label: 'Heizkreis-Rücklauf anzeigen', primary_pump: 'Primärpumpe', series_buffer: 'Reihenpuffer im Rücklauf (mit Bypass-Ventil)', hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3', hc4_name: 'Name Heizkreis 4', hc5_name: 'Name Heizkreis 5', hc6_name: 'Name Heizkreis 6',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_hc4: 'Heizkreis 4', sec_hc5: 'Heizkreis 5', sec_hc6: 'Heizkreis 6', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis', sec_cutouts: 'Details: Abschaltzähler',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
@@ -1289,7 +1289,7 @@ class HeatpumpFlowCard extends HTMLElement {
               { name: 'unit_style', selector: { select: { mode: 'dropdown', options: HFC_UNIT_STYLES.map((v) => ({ value: v, label: L[`unit_${v}`] })) } } },
               ...(config && (config.unit_style === 'vaillant' || ((!config.unit_style || config.unit_style === 'auto') && config.preset === 'vaillant'))
                 ? [{ name: 'unit_size', selector: { select: { mode: 'dropdown', options: HFC_UNIT_SIZES.map((v) => ({ value: v, label: L[`size_${v}`] })) } } }] : []),
-              { name: 'unit_pump', selector: { boolean: {} } },
+              { name: 'primary_pump', selector: { boolean: {} } },
               { name: 'timeline', selector: { boolean: {} } },
               ...(config && config.timeline ? [{ name: 'timeline_hours', selector: { number: { min: 3, max: 72, step: 1, mode: 'box', unit_of_measurement: 'h' } } }, { name: 'timeline_marks', selector: { boolean: {} } }] : []),
               { name: 'details_open', selector: { boolean: {} } },
@@ -1371,8 +1371,8 @@ class HeatpumpFlowCard extends HTMLElement {
     if (config.series_buffer !== undefined && config.series_buffer !== null && typeof config.series_buffer !== 'boolean') {
       throw new Error('series_buffer must be true or false');
     }
-    if (config.unit_pump !== undefined && config.unit_pump !== null && typeof config.unit_pump !== 'boolean') {
-      throw new Error('unit_pump must be true or false');
+    if (config.primary_pump !== undefined && config.primary_pump !== null && typeof config.primary_pump !== 'boolean') {
+      throw new Error('primary_pump must be true or false');
     }
     if (config.texts !== undefined && config.texts !== null) HeatpumpFlowCard._validateTexts(config.texts);
     if (config.flow_speed !== undefined && config.flow_speed !== null && config.flow_speed !== '' && !(+config.flow_speed >= 0.2 && +config.flow_speed <= 3)) {
@@ -1948,7 +1948,7 @@ class HeatpumpFlowCard extends HTMLElement {
       hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump') || (!buffer && (this._has('flow') || this._has('return'))),
       house: this._has('room') || this._has('room_target'),
       circ: this._has('circulation'),
-      unitPump: this._unitPump(),
+      primaryPump: this._primaryPump(),
       hcPump: this._has('hc_pump'),
       hcType: this._hcType,
       hcs: this._hcCount > 1 ? this._hcTypes.slice(0, this._hcCount).join() : '',
@@ -2071,12 +2071,12 @@ class HeatpumpFlowCard extends HTMLElement {
           ${showHc ? Array.from({ length: this._hcCount }, (_, n) => this._circuitSvg(n + 1)).join('') : ''}
           ${this._sourceSvg()}
 
-          ${this._unitPump() ? `<g class="tap" ${de(e.volume ? 'volume' : 'mode')}>
-            <circle class="pump" cx="340" cy="250" r="18"/>
-            <g class="impeller" id="impeller-unit" style="transform-origin:340px 250px"><path d="M340 237 L347 250 L333 250Z M340 263 L333 250 L347 250Z" class="imp"/></g>
+          ${this._primaryPump() ? `<g class="tap" ${de(e.volume ? 'volume' : 'mode')}>
+            <circle class="pump" cx="340" cy="250" r="16"/>
+            <g class="impeller" id="impeller-primary" style="transform-origin:340px 250px"><path d="M340 238 L346 250 L334 250Z M340 262 L334 250 L346 250Z" class="imp"/></g>
           </g>` : ''}
-          <g class="tap" ${de('flow')}><text class="pipe-label" id="t-vl" x="${this._unitPump() ? 340 : 338}" y="${this._unitPump() ? 226 : 236}" text-anchor="middle"></text></g>
-          <g class="tap" ${de('volume')}><text class="vol-label" id="t-vol" x="${this._unitPump() ? 340 : 346}" y="${this._unitPump() ? 284 : 275}" text-anchor="middle"></text></g>
+          <g class="tap" ${de('flow')}><text class="pipe-label" id="t-vl" x="${this._primaryPump() ? 340 : 338}" y="${this._primaryPump() ? 226 : 236}" text-anchor="middle"></text></g>
+          <g class="tap" ${de('volume')}><text class="vol-label" id="t-vol" x="${this._primaryPump() ? 340 : 346}" y="${this._primaryPump() ? 284 : 275}" text-anchor="middle"></text></g>
           <g class="tap" ${de('return')}><text class="pipe-label" id="t-rl" x="335" y="406" text-anchor="middle"></text></g>
 
           <g class="tap" ${de('mode')}>
@@ -2693,10 +2693,10 @@ class HeatpumpFlowCard extends HTMLElement {
     </g>`;
   }
 
-  // The heat pump has its own water pump (`unit_pump`, default from the preset). It is drawn on the flow pipe next to the
+  // The heat pump has its own primary pump (`primary_pump`, default from the preset). It is drawn on the flow pipe next to the
   // heat pump block, centred between the flow temperature and the flow rate. A single direct circuit without its own pump sensor then has no pump of its own.
-  _unitPump() { return this._config.unit_pump ?? !!this._preset?.unit_pump; }
-  _circuitPump(n) { return !(n === 1 && this._hcCount === 1 && this._unitPump() && !this._parts.buffer && !this._e.hc_pump); }
+  _primaryPump() { return this._config.primary_pump ?? !!this._preset?.primary_pump; }
+  _circuitPump(n) { return !(n === 1 && this._hcCount === 1 && this._primaryPump() && !this._parts.buffer && !this._e.hc_pump); }
 
   // Drawing of the outdoor unit inside the heat pump block (air source only; brine and water keep the loop symbol).
   // Manufacturer-inspired, logo-free outdoor units. `auto` takes the style of the preset.
@@ -3357,8 +3357,8 @@ class HeatpumpFlowCard extends HTMLElement {
     ['rl', 'rl-dhw', 'rl-buf', 'byp-rl'].forEach((id) => stroke(id, cRet));
     const pipe = (id, on) => { this._cls(`p-${id}`, on); this._cls(`f-${id}`, on); };
     pipe('vl', loop); pipe('rl', loop);
-    // The heat pump's own water pump runs with a flow rate, else with the hot-water or heating loop.
-    this._cls('impeller-unit', Number.isFinite(vol) ? vol > 0 : loop);
+    // The heat pump's own primary pump runs with a flow rate, else with the hot-water or heating loop.
+    this._cls('impeller-primary', Number.isFinite(vol) ? vol > 0 : loop);
     pipe('vl-dhw', toDhw); pipe('rl-dhw', toDhw);
     pipe('vl-buf', toHeat); pipe('rl-buf', toHeat);
     pipe('byp-vl', toHeat); pipe('byp-rl', toHeat);

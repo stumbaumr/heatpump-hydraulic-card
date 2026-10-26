@@ -89,7 +89,7 @@
     { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
     { errors: 'sensor.error' }, { error_ok: 'No Error' }, { error_ok: ['No Error', 0] },
     { timeline: 'yes' }, { timeline_hours: 0 }, { timeline_marks: 'yes' }, { timeline_marks: [{ label: 'x' }] }, { timeline_marks: [7] }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
-    { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }, { series_buffer: 'yes' }, { unit_pump: 'yes' }, { theme: 'sepia' }, { fullscreen: 'yes' },
+    { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }, { series_buffer: 'yes' }, { primary_pump: 'yes' }, { theme: 'sepia' }, { fullscreen: 'yes' },
     { texts: [] }, { texts: { NL: { title: 'x' } } }, { texts: { nl: { title: 7 } } }, { texts: { nl: { missing_key: 'x' } } },
     { brine_pressure_min: -0.1 }, { hc_pressure_crit: 1.2, hc_pressure_min: 1.0 }, { hc_pressure_min: 3, hc_pressure_max: 2 }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
@@ -1778,7 +1778,7 @@
     check(/- hc_curve_offset: number\.panasonic_heat_pump_main_z1_heat_request_temp = 2/.test(C._diagnosticReport({ preset: 'heishamon' }, hassOf(st()))), 'diagnostic report lists the curve shift');
   }
 
-  // 18l. water pump inside the heat pump (unit_pump): drawn on the flow pipe under the flow temperature and over the flow rate, the single direct circuit has none
+  // 18l. primary pump inside the heat pump (primary_pump): drawn on the flow pipe under the flow temperature and over the flow rate, the single direct circuit has none
   {
     const p = 'panasonic_heat_pump';
     const st = (extra = {}) => toStates({
@@ -1788,31 +1788,31 @@
     });
     const q = (c, sel) => c.shadowRoot.querySelector(sel);
     let card = mount({ preset: 'heishamon' }, hassOf(st())); await wait(20);
-    check(q(card, '#impeller-unit'), 'HeishaMon: the card draws the water pump of the heat pump');
-    const box = q(card, '#hp-box').getBBox(); const pump = q(card, '#impeller-unit').parentNode.querySelector('circle.pump').getBBox();
+    check(q(card, '#impeller-primary'), 'HeishaMon: the card draws the primary pump of the heat pump');
+    const box = q(card, '#hp-box').getBBox(); const pump = q(card, '#impeller-primary').parentNode.querySelector('circle.pump').getBBox();
     const apart = (a, b) => a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
-    check(pump.x >= box.x + box.width && pump.x + pump.width <= 402 && pump.y < 250 && pump.y + pump.height > 250, 'the water pump sits on the flow pipe between the heat pump block and the valve');
+    check(pump.x >= box.x + box.width && pump.x + pump.width <= 402 && pump.y < 250 && pump.y + pump.height > 250, 'the primary pump sits on the flow pipe between the heat pump block and the valve');
     const mid = (r) => r.x + r.width / 2;
-    check(Math.abs(mid(pump) - mid(q(card, '#t-vl').getBBox())) < 1 && Math.abs(mid(pump) - mid(q(card, '#t-vol').getBBox())) < 1, 'the water pump stands centred under the flow temperature and over the flow rate');
-    check(apart(pump, q(card, '#t-vl').getBBox()) && apart(pump, q(card, '#t-vol').getBBox()), `the water pump keeps clear of the flow temperature and the flow rate (${[pump, q(card, '#t-vl').getBBox(), q(card, '#t-vol').getBBox()].map((r) => [r.x, r.y, r.width, r.height].map(Math.round).join(',')).join(' / ')})`);
-    check(q(card, '#impeller-unit').parentNode.querySelector('circle.pump').getAttribute('r') === '18', 'the water pump has the size of the 3-way valve (r 18)');
+    check(Math.abs(mid(pump) - mid(q(card, '#t-vl').getBBox())) < 1 && Math.abs(mid(pump) - mid(q(card, '#t-vol').getBBox())) < 1, 'the primary pump stands centred under the flow temperature and over the flow rate');
+    check(apart(pump, q(card, '#t-vl').getBBox()) && apart(pump, q(card, '#t-vol').getBBox()), `the primary pump keeps clear of the flow temperature and the flow rate (${[pump, q(card, '#t-vl').getBBox(), q(card, '#t-vol').getBBox()].map((r) => [r.x, r.y, r.width, r.height].map(Math.round).join(',')).join(' / ')})`);
+    check(q(card, '#impeller-primary').parentNode.querySelector('circle.pump').getAttribute('r') === '16', 'the primary pump has the size of the circuit pump (r 16)');
     check(!q(card, 'circle.pump[cx="720"]') && !q(card, '#impeller'), 'the single direct circuit has no pump of its own');
-    check(q(card, '#impeller-unit').classList.contains('on'), 'the water pump turns with a flow rate');
-    check(q(card, '#impeller-unit').closest('.tap').dataset.entity === `sensor.${p}_main_pump_flow`, 'a tap on the water pump opens the flow rate');
+    check(q(card, '#impeller-primary').classList.contains('on'), 'the primary pump turns with a flow rate');
+    check(q(card, '#impeller-primary').closest('.tap').dataset.entity === `sensor.${p}_main_pump_flow`, 'a tap on the primary pump opens the flow rate');
     card.remove();
     card = mount({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
-    check(!q(card, '#impeller-unit').classList.contains('on'), 'the water pump stands still without a flow rate');
+    check(!q(card, '#impeller-primary').classList.contains('on'), 'the primary pump stands still without a flow rate');
     card.remove();
-    card = mount({ preset: 'heishamon', unit_pump: false }, hassOf(st())); await wait(20);
-    check(!q(card, '#impeller-unit') && q(card, 'circle.pump[cx="720"]'), 'unit_pump: false draws the pump in the circuit again');
+    card = mount({ preset: 'heishamon', primary_pump: false }, hassOf(st())); await wait(20);
+    check(!q(card, '#impeller-primary') && q(card, 'circle.pump[cx="720"]'), 'primary_pump: false draws the pump in the circuit again');
     card.remove();
     card = mount({ preset: 'heishamon', entities: { hc_pump: 'binary_sensor.z1_pump' } }, hassOf({ ...st(), 'binary_sensor.z1_pump': { state: 'on', attributes: {} } })); await wait(20);
-    check(q(card, '#impeller-unit') && q(card, 'circle.pump[cx="720"]'), 'a circuit pump sensor keeps the circuit pump next to the water pump');
+    check(q(card, '#impeller-primary') && q(card, 'circle.pump[cx="720"]'), 'a circuit pump sensor keeps the circuit pump next to the primary pump');
     card.remove();
     card = mount({ ...setups[0].config }, hassOf(toStates(setups[0].states('heat')), setups[0].registry || {}, setups[0].energy, setups[0])); await wait(20);
-    check(!q(card, '#impeller-unit'), 'presets without unit_pump keep the circuit pump only');
+    check(!q(card, '#impeller-primary'), 'presets without primary_pump keep the circuit pump only');
     card.remove();
-    check(C._formSchema({}).schema.flatMap(function keysOf(n) { return n.schema ? n.schema.flatMap(keysOf) : [n.name]; }).includes('unit_pump'), 'editor offers the water pump in the heat pump');
+    check(C._formSchema({}).schema.flatMap(function keysOf(n) { return n.schema ? n.schema.flatMap(keysOf) : [n.name]; }).includes('primary_pump'), 'editor offers the primary pump in the heat pump');
   }
 
   // 18m. series buffer in the return: the bypass valve follows the defrost signal (or its own entity) and then stops the circuits
