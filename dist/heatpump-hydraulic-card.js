@@ -1847,7 +1847,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const i = this._i;
     const f = (v) => this._fmt(v, Number.isInteger(v) ? 0 : 1);
     const u = ['', '°c', 'k'].includes(unit) ? 'K' : unit;
-    const part = Number.isFinite(shift) ? `${shift < 0 ? '−' : '+'} ${f(Math.abs(shift))} ${u}` : '';
+    // Without a shift the curve is the target: only "Target 34 °C".
+    const part = Number.isFinite(shift) && shift !== 0 ? `${shift < 0 ? '−' : '+'} ${f(Math.abs(shift))} ${u}` : '';
     let texts = [''];
     if (Number.isFinite(set) && part) {
       const head = `${i.target} ${f(set)} °C`; const curve = `${i.curve_offset} ${f(set - shift)} °C ${part}`;

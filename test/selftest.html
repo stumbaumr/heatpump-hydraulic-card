@@ -1748,6 +1748,8 @@
       && !card.shadowRoot.querySelector('.controls'), `read only: tap targets for the shift and the flow, no quick control (${above.parentNode.dataset.entity}, ${below.parentNode.dataset.entity})`);
     card.hass = hassOf(st({ ...zone, [`number.${p}_main_z1_heat_request_temp`]: ['-1', '°C'], [`sensor.${p}_main_z1_water_target_temp`]: ['33', '°C'] })); await wait(5);
     check(/^Soll 33 °C( \(Kurve 34 °C − 1 K( Verschiebung)?\))?$/.test(above.textContent), `negative shift (${above.textContent})`);
+    card.hass = hassOf(st({ ...zone, [`number.${p}_main_z1_heat_request_temp`]: ['0', '°C'], [`sensor.${p}_main_z1_water_target_temp`]: ['34', '°C'] })); await wait(5);
+    check(above.textContent === 'Soll 34 °C', `no shift: only the target (${above.textContent})`);
     card.remove();
     // Without a zone sensor the circuit has no flow of its own: the heat pump's flow stands only at the VL label.
     const own = mount({ preset: 'heishamon', language: 'de' }, hassOf(st())); await wait(20);
