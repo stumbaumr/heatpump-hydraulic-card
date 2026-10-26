@@ -1273,6 +1273,38 @@
     card.remove();
   }
 
+  // 18e. HeishaMon: error sensor, kWh counters, zone water temperature without a zone sensor (real installation, WH-MDC05J3E5)
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_z1_water_temp`]: ['-78', '°C'], [`sensor.${p}_main_error`]: 'No error',
+      [`sensor.${p}_main_heat_power_consumption`]: ['600', 'W'], [`sensor.${p}_main_heat_power_production`]: ['2600', 'W'],
+      [`sensor.${p}_main_dhw_power_consumption`]: ['0', 'W'], [`sensor.${p}_main_dhw_power_production`]: ['0', 'W'],
+      'sensor.aquarea_pump_total_consumption_total': ['7690.574', 'kWh'], 'sensor.aquarea_pump_total_production_total': ['24276.876', 'kWh'],
+      'sensor.aquarea_heat_power_consumed_total': ['6636.338', 'kWh'], 'sensor.aquarea_heat_power_produced_total': ['21509.845', 'kWh'],
+      'sensor.aquarea_dhw_power_consumed_total': ['1054.239', 'kWh'], 'sensor.aquarea_dhw_power_produced_total': ['2767.033', 'kWh'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(JSON.stringify(r.errors) === JSON.stringify([`sensor.${p}_main_error`]), `HeishaMon error sensor (${r.errors})`);
+    check(r.entities.energy_total === 'sensor.aquarea_pump_total_consumption_total' && r.entities.heat_total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon kWh totals');
+    check(r.tiles.energy?.total === 'sensor.aquarea_pump_total_consumption_total' && r.tiles.heat?.total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon totals feed the energy and heat tiles');
+    check(r.tiles.energy_heating?.total === 'sensor.aquarea_heat_power_consumed_total' && r.tiles.heat_dhw?.total === 'sensor.aquarea_dhw_power_produced_total'
+      && r.tiles.energy_heating?.now === `sensor.${p}_main_heat_power_consumption`, 'HeishaMon tiles per mode: now and total');
+    check(!r.tiles.energy_cooling?.total, 'HeishaMon without cooling counters has no cooling total');
+    check(r.entities.hc_flow === undefined, `HeishaMon ignores the zone water temperature without a zone sensor (${r.entities.hc_flow})`);
+    const zone = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`sensor.${p}_main_z1_water_temp`]: ['33', '°C'] })));
+    check(zone.entities.hc_flow === `sensor.${p}_main_z1_water_temp`, 'HeishaMon keeps a valid zone water temperature');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const errOn = () => card.shadowRoot.getElementById('chip-err').classList.contains('on');
+    check(!errOn(), 'HeishaMon "No error" shows no error chip');
+    check(JSON.parse(card._layoutSignature()).hc === true, 'HeishaMon circuit stays drawn as a direct system');
+    card.hass = hassOf(toStates({ ...st, [`sensor.${p}_main_error`]: 'H76' })); await wait(5);
+    check(errOn(), 'HeishaMon error code H76 shows the error chip');
+    card.remove();
+  }
+
   // 18i. an entity list adds the values, e.g. two S0 meters of HeishaMon as the heat pump power
   {
     const p = 'panasonic_heat_pump';
@@ -1303,6 +1335,36 @@
     const find = (list) => flat(list).find((x) => x.name === 'power');
     check(find(C._formSchema(cfg).schema)?.selector?.entity?.multiple === true, 'editor shows a picker for several entities for a list');
     check(!find(C._formSchema({ preset: 'heishamon' }).schema)?.selector?.entity?.multiple, 'editor keeps the single picker without a list');
+  }
+
+  // 18f. HeishaMon: refrigerant temperatures and the superheat computed from them
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_discharge_temp`]: ['49', '°C'],
+      [`sensor.${p}_main_outside_pipe_temp`]: ['1', '°C'], [`sensor.${p}_main_eva_outlet_temp`]: ['3', '°C'],
+      [`sensor.${p}_main_inside_pipe_temp`]: ['32', '°C'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(r.entities.evap_temp === `sensor.${p}_main_outside_pipe_temp` && r.entities.suction_temp === `sensor.${p}_main_eva_outlet_temp`
+      && r.entities.liquid_temp === `sensor.${p}_main_inside_pipe_temp`, 'HeishaMon refrigerant temperatures');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const rows = card._drawerRows().flatMap(([, list]) => list);
+    const sh = rows.find((x) => x[0] === 'superheat');
+    check(sh && sh[3]() === '2.0 K', `HeishaMon superheat from suction gas and evaporation (${sh && sh[3] ? sh[3]() : 'none'})`);
+    card.remove();
+    // In defrost the circuit runs backwards: the outdoor pipe is no evaporation temperature then.
+    const value = (c, key) => c._drawerRows().flatMap(([, list]) => list).find((x) => x[0] === key)?.[3]();
+    const defrost = mount({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(['evap_temp', 'suction_temp', 'liquid_temp', 'superheat'].every((k) => value(defrost, k) === '–') && /49/.test(value(defrost, 'hot_gas')),
+      `HeishaMon defrost hides the heating-only refrigerant roles (${['evap_temp', 'superheat', 'hot_gas'].map((k) => value(defrost, k)).join(', ')})`);
+    defrost.hass = hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'off' })); await wait(5);
+    check(value(defrost, 'superheat') === '2.0 K' && /1/.test(value(defrost, 'evap_temp')), 'after defrost the roles come back');
+    defrost.remove();
+    const own = mount({ preset: 'heishamon', entities: { evap_temp: `sensor.${p}_main_outside_pipe_temp` } }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(value(own, 'evap_temp') !== '–' && value(own, 'suction_temp') === '–', 'an entity set in the config keeps its value in defrost');
+    own.remove();
   }
 
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes

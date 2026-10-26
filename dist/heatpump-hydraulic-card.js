@@ -339,6 +339,9 @@ const HFC_PRESETS = {
       // Z1_Temp is the room temperature only with a room sensor at the zone ("Internal Thermostat", "Thermistor").
       // With "Water Temperature" or "External Thermostat" it is the zone water temperature; then the remote control sensor is the room.
       const zoneRoom = ['Internal Thermostat', 'Thermistor'].includes(ctx.state(`sensor.${m}z1_sensor_settings`));
+      // The zone water temperature needs a zone sensor; without one HeishaMon reports about -78 to -128 °C.
+      // Then the circuit has no own flow temperature and the card uses the heat pump's flow (direct system).
+      const zoneFlow = parseFloat(ctx.state(`sensor.${m}${z}_water_temp`));
       return {
         compressor: `sensor.${m}compressor_freq`,
         valve: `sensor.${m}threeway_valve_state`,
@@ -355,7 +358,7 @@ const HFC_PRESETS = {
         outdoor: `sensor.${m}outside_temp`,
         dhw_top: `sensor.${m}dhw_temp`,
         dhw_target: [`number.${m}dhw_target_temp`, `sensor.${m}dhw_target_temp`],
-        hc_flow: `sensor.${m}${z}_water_temp`,
+        hc_flow: zoneFlow > -50 || Number.isNaN(zoneFlow) ? `sensor.${m}${z}_water_temp` : undefined,
         // main_target_temp follows the hot-water target while the valve is on the tank, so the zone target comes first.
         hc_setpoint: [`sensor.${m}${z}_water_target_temp`, i.hc === 1 ? `sensor.${m}main_target_temp` : undefined],
         room: zoneRoom ? `sensor.${m}z1_temp` : [`sensor.${m}room_thermostat_temp`, `sensor.${m}z1_temp`],
@@ -363,24 +366,40 @@ const HFC_PRESETS = {
         hours: `sensor.${m}operations_hours`,
         starts_total: `sensor.${m}operations_counter`,
         aux_hours: `sensor.${m}room_heater_operations_hours`,
+        // kWh totals that the integration integrates from its W sensors (left Riemann sum, ids from their names). They are no
+        // counters of the heat pump: they start with the integration and stop without data. Long-term statistics give the periods.
+        energy_total: 'sensor.aquarea_pump_total_consumption_total',
+        heat_total: 'sensor.aquarea_pump_total_production_total',
         compressor_speed: `sensor.${m}compressor_freq`,
         hot_gas: `sensor.${m}discharge_temp`,
+        // Refrigerant sensors in heating mode: the outdoor heat exchanger pipe is the evaporator (evaporation temperature),
+        // the evaporator outlet is the suction gas, the indoor (plate heat exchanger) pipe is the liquid line.
+        evap_temp: `sensor.${m}outside_pipe_temp`,
+        suction_temp: `sensor.${m}eva_outlet_temp`,
+        liquid_temp: `sensor.${m}inside_pipe_temp`,
         high_pressure: `sensor.${m}high_pressure`,
         low_pressure: `sensor.${m}low_pressure`,
         eev: `sensor.${m}expansion_valve`,
       };
     },
+    // The pipe sensors above have these roles only in heating: in defrost and cooling the circuit runs backwards.
+    heating_roles: ['evap_temp', 'suction_temp', 'liquid_temp'],
+    // TOP44 "Last Error": "No error", or an H/F code (H76, F12 …) until the error is reset.
+    errors: (p) => [`sensor.${p}_main_error`],
+    error_ok: ['No error'],
     // Holiday mode reports Off / Scheduled / Active as a sensor, or on / off as a switch.
     program_map: { Active: 'holiday', Scheduled: 'none', Off: 'none', on: 'holiday' },
-    // No energy counters: heat and electricity per mode as current power, so the COP tiles work for "now".
+    // Heat and electricity per mode as current power ("now") and as the integration's kWh counters ("total" and, from the
+    // long-term statistics, today … year). The counter ids come from the names of the power sensors plus " Total".
     tiles: (p) => {
       const m = `sensor.${p}_main_`;
       const both = (topic) => [`${m}${topic}_power_`, `${m}${topic}_energy_`];
-      const now = (topic, kind) => ({ now: both(topic).map((x) => x + kind) });
+      const now = (topic, kind, total) => ({ now: both(topic).map((x) => x + kind), total: `sensor.aquarea_${total}_total` });
       return {
-        energy_heating: now('heat', 'consumption'), heat_heating: now('heat', 'production'),
-        energy_dhw: now('dhw', 'consumption'), heat_dhw: now('dhw', 'production'),
-        energy_cooling: now('cool', 'consumption'), heat_cooling: now('cool', 'production'),
+        energy_heating: now('heat', 'consumption', 'heat_power_consumed'), heat_heating: now('heat', 'production', 'heat_power_produced'),
+        energy_dhw: now('dhw', 'consumption', 'dhw_power_consumed'), heat_dhw: now('dhw', 'production', 'dhw_power_produced'),
+        energy_cooling: now('cool', 'consumption', 'thermal_cooling_power_consumption'),
+        heat_cooling: now('cool', 'production', 'thermal_cooling_power_production'),
         starts: { total: `${m}operations_counter` }, hours: { total: `${m}operations_hours` },
         aux_hours: { total: `${m}room_heater_operations_hours` },
       };
@@ -1224,6 +1243,8 @@ class HeatpumpFlowCard extends HTMLElement {
     this._sums = r.sums;
     this._errors = r.errors;
     this._tileMap = r.tiles;
+    // Preset sensors whose refrigerant role holds only in heating; an entity set in the config keeps its role.
+    this._heatingRoles = (r.preset?.heating_roles || []).filter((k) => this._e[k] && this._e[k] === r.fromPreset[k] && !(this._config.entities || {})[k]);
     // An action for a key without an entity does nothing; say so once instead of failing silently.
     if (r.ready && this._config.actions) {
       const lost = Object.keys(this._config.actions).filter((k) => !this._e[k] && !(this._warned || (this._warned = {}))[k]);
@@ -1402,6 +1423,11 @@ class HeatpumpFlowCard extends HTMLElement {
     group.dataset.a11y = `${label}: ${this._pressureText(key)}, ${this._i[`pressure_${state}`]}`;
   }
   _on(key) { return ['on', 'true', 'open', '1', 'ein'].includes(String(this._s(key)).toLowerCase()); }
+  // Defrost and cooling run the refrigerant circuit backwards: the outdoor heat exchanger is the condenser then.
+  _reversedCycle() {
+    return ['defrost', 'cooling'].includes(this._norm(this._maps.mode, this._s('mode')))
+      || String(this._s('status') || '').toUpperCase().includes('DEFROST') || (this._has('defrost') && this._on('defrost'));
+  }
   // Compressor modulation 0..1 from `compressor_speed` (percent; Hz or rpm against `compressor_speed_max`), NaN without a usable value.
   _speedFraction() {
     const v = this._n('compressor_speed');
@@ -2143,13 +2169,16 @@ class HeatpumpFlowCard extends HTMLElement {
         return Number.isFinite(c) && c > 0 ? `≈${this._fmt(c, 2)}` : '–';
       }]);
     }
-    const rf = ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev'].map(row);
+    // A sensor with a heating-only role shows '–' while the cycle runs backwards (defrost, cooling).
+    const reversed = (key) => (this._heatingRoles || []).includes(key) && this._reversedCycle();
+    const rf = ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev'].map(row)
+      .map((r) => (r && (this._heatingRoles || []).includes(r[0]) ? [...r.slice(0, 3), () => (reversed(r[0]) ? '–' : r[3]())] : r));
     // Cut-out counters are event counts, shown as plain numbers with a times sign, never with a unit of pressure or temperature.
     const cutouts = ['cutout_high_pressure', 'cutout_low_pressure', 'cutout_temperature'].filter(ok).map((key) => [key, D[key], this._e[key], () => this._countText(key)]);
     const hydraulic = [['brine_pressure', i.brine_pressure], ['hc_pressure', i.hc_pressure]].filter(([key]) => ok(key))
       .map(([key, label]) => [key, label, this._e[key], () => this._pressureText(key)]);
     // Superheat = suction gas − evaporation, subcooling = condensation − liquid line, unless the integration provides them.
-    const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) ? `${this._fmt(v, 1)} K` : '–'; };
+    const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) && !reversed(a) && !reversed(b) ? `${this._fmt(v, 1)} K` : '–'; };
     rf.push(row('superheat') || (ok('suction_temp') && ok('evap_temp') ? ['superheat', D.superheat, this._e.suction_temp, () => diff('suction_temp', 'evap_temp')] : null));
     rf.push(row('subcooling') || (ok('cond_temp') && ok('liquid_temp') ? ['subcooling', D.subcooling, this._e.liquid_temp, () => diff('cond_temp', 'liquid_temp')] : null));
     const more = (this._config.details || []).map((d, n) => (typeof d === 'string' ? { entity: d } : d)).filter((d) => d && this._hass.states[d.entity])
