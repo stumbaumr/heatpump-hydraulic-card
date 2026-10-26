@@ -1270,6 +1270,22 @@
     check(room('Water Temperature', noRemote) === `sensor.${p}_main_z1_temp`, 'HeishaMon without remote control sensor keeps the zone temperature');
     const card = mount({ preset: 'heishamon' }, hassOf(toStates({ ...base, [`sensor.${p}_main_z1_sensor_settings`]: 'Water Temperature' }))); await wait(20);
     check(card._n('room') === 23, `HeishaMon card shows the room temperature, not the zone water (${card._n('room')})`);
+  }
+
+  // 18j. HeishaMon defrost: the compressor pauses while the 4-way valve switches; the card stays in defrost
+  {
+    const p = 'panasonic_heat_pump';
+    const st = (comp) => toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['28.5', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['31.75', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: [comp, 'Hz'], [`sensor.${p}_main_heat_power_consumption`]: [comp === '0' ? '0' : '1200', 'W'],
+      [`sensor.${p}_main_pump_flow`]: ['16.6', 'L/min'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`switch.${p}_main_defrosting_state`]: 'on',
+    });
+    const card = mount({ preset: 'heishamon' }, hassOf(st('35'))); await wait(20);
+    const chip = () => card.shadowRoot.getElementById('chip-mode');
+    check(/mode-defrost/.test(chip().className), `defrost with the compressor running (${chip().className})`);
+    card.hass = hassOf(st('0')); await wait(5);
+    check(/mode-defrost/.test(chip().className) && !/Standby|Ready|idle/i.test(chip().textContent), `defrost stays while the compressor pauses (${chip().textContent.trim()})`);
     card.remove();
   }
 
