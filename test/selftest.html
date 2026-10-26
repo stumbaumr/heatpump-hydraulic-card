@@ -627,7 +627,7 @@
     check(o.has && o.text === '12.5 °C' && !o.flow && !o.coil && !o.panel, `solar loop idle with the pump off (${JSON.stringify(o)})`);
     o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null } });
     check(o.has && o.text === 'Solar' && o.flow, `pump only: label without a temperature (${JSON.stringify(o)})`);
-    o = await sol('heat', { entities: { ...s.config.entities, dhw_top: null, dhw_mode: null } });
+    o = await sol('heat', { entities: { ...s.config.entities, dhw_top: null, dhw_middle: null, dhw_bottom: null, dhw_mode: null } });
     check(!o.has && o.ok, 'no solar loop without a hot water tank');
     o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null, solar_pump: null } });
     check(!o.has && o.ok, 'no solar loop without solar entities');
@@ -1486,6 +1486,24 @@
     check(['env_energy', 'brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max'].every((key) => schema.flatMap(keysOf).includes(key)), 'editor offers environmental energy and pressure thresholds');
     const emitter = (() => { let found; const visit = (n) => { if (n.name === 'hc_type') found = n; (n.schema || []).forEach(visit); }; schema.forEach(visit); return found; })();
     check(emitter.selector.select.options.some((o) => o.value === 'column'), 'editor offers column radiators');
+  }
+
+  // 20b. DHW tank with only a sensor near the bottom (HeishaMon has one tank sensor; its position depends on the tank)
+  {
+    const states = toStates({ 'sensor.flow': ['35', '°C'], 'sensor.return': ['30', '°C'], 'sensor.dhw': ['37', '°C'] });
+    const card = mount({ entities: { flow: 'sensor.flow', return: 'sensor.return', dhw_bottom: 'sensor.dhw' } }, hassOf(states)); await wait(20);
+    const $ = (id) => card.shadowRoot.getElementById(id);
+    check(ok(card) && !!card.shadowRoot.querySelector('rect.tank'), 'DHW tank is drawn with only a bottom sensor');
+    check($('t-dhw-top').textContent === '' && $('t-dhw-bottom').textContent === card._t(37), `the value shows at the bottom without a position label (${$('t-dhw-bottom').textContent})`);
+    check($('g-dhw-top').getAttribute('stop-color') === $('g-dhw-bottom').getAttribute('stop-color'), 'the tank colour comes from the bottom sensor');
+    check(card.shadowRoot.querySelector('rect.tank').closest('.tap')?.getAttribute('data-entity') === 'sensor.dhw', 'tapping the tank opens the bottom sensor');
+    card.remove();
+    const preset = mount({ preset: 'heishamon', entities: { dhw_top: null, dhw_bottom: 'sensor.panasonic_heat_pump_main_dhw_temp' } }, hassOf(toStates({
+      'sensor.panasonic_heat_pump_main_main_outlet_temp': ['36', '°C'], 'sensor.panasonic_heat_pump_main_main_inlet_temp': ['32', '°C'],
+      'sensor.panasonic_heat_pump_main_dhw_temp': ['37', '°C'],
+    }))); await wait(20);
+    check(!preset._has('dhw_top') && /37/.test(preset.shadowRoot.getElementById('t-dhw-bottom').textContent), 'a preset sensor can be moved from top to bottom in the config');
+    preset.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

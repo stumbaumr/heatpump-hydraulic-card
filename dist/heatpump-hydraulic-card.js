@@ -1535,7 +1535,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const parts = {
       power: this._powerMode(),
       sources: this._powerMode() === 'energy' ? [this._energy.solar.length, this._energy.battery.length, this._energy.grid.length].join() : '',
-      dhw: this._has('dhw_top') || this._has('dhw_mode'),
+      // A tank with only a lower sensor (e.g. HeishaMon's single sensor near the bottom) is still drawn.
+      dhw: ['dhw_top', 'dhw_middle', 'dhw_bottom', 'dhw_mode'].some((k) => this._has(k)),
       buffer,
       // A direct system still has a circuit: use the heat-pump flow/return when no circuit-specific sensors exist.
       hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump') || (!buffer && (this._has('flow') || this._has('return'))),
@@ -1548,7 +1549,7 @@ class HeatpumpFlowCard extends HTMLElement {
       heaters: ['heater', 'dhw_heater', 'buffer_heater'].map((k) => (this._has(k) ? 1 : 0)).join(''),
       middle: [this._has('dhw_middle') ? 1 : 0, this._has('buffer_middle') ? 1 : 0].join(''),
       pressure: [this._sourceType === 'brine' && this._has('brine_pressure') ? 1 : 0, this._has('hc_pressure') ? 1 : 0].join(''),
-      solar: (this._has('dhw_top') || this._has('dhw_mode')) && (this._has('solar_collector') || this._has('solar_pump')),
+      solar: ['dhw_top', 'dhw_middle', 'dhw_bottom', 'dhw_mode'].some((k) => this._has(k)) && (this._has('solar_collector') || this._has('solar_pump')),
       controls: this._controlList().map((c) => c.entity).join(),
       drawer: this._drawerRows().map(([s, r]) => s + r.map((x) => x[0]).join('.')).join('|'),
       lang: this._lang,
@@ -1687,7 +1688,7 @@ class HeatpumpFlowCard extends HTMLElement {
               <path class="valve-arrow" id="valve-arrow" d="M420 262 V240 M412 248 L420 240 L428 248"/>
               <text class="small" id="t-valve" x="446" y="254"></text>
             </g>
-            <g class="tap" ${de('dhw_top')}>
+            <g class="tap" ${de(['dhw_top', 'dhw_middle', 'dhw_bottom'].find((k) => e[k]) || 'dhw_top')}>
               <text class="tank-title" x="580" y="30" text-anchor="middle">${this._esc(i.dhw)}</text>
               <rect class="tank" x="520" y="40" width="120" height="200" rx="26" fill="url(#g-dhw)"/>
               <path class="coil" id="coil" d="M520 80 H600 L540 100 H600 L540 120 H600 L540 140 H600 L540 160 H600 L540 180 H600 L540 200 H520"/>
@@ -3018,13 +3019,18 @@ class HeatpumpFlowCard extends HTMLElement {
       const arrow = this._$('valve-arrow');
       if (arrow) arrow.setAttribute('transform', toDhw ? '' : 'rotate(180 420 250)');
       this._txt('t-valve', loop ? (toDhw ? i.valve_dhw : (cooling ? i.valve_cooling : i.valve_heating)) : '');
-      const top = this._n('dhw_top'); const bot = this._has('dhw_bottom') ? this._n('dhw_bottom') : top - 5;
+      // Without a top sensor the large value stays empty: the lower sensors show their value at their own position.
+      const hasTop = this._has('dhw_top');
+      const top = this._n(hasTop ? 'dhw_top' : this._has('dhw_middle') ? 'dhw_middle' : 'dhw_bottom');
+      const bot = this._has('dhw_bottom') ? this._n('dhw_bottom') : top - 5;
       this._$('g-dhw-top').setAttribute('stop-color', this._tankColor(top));
       if (this._has('dhw_middle')) this._$('g-dhw-middle')?.setAttribute('stop-color', this._tankColor(this._n('dhw_middle')));
       this._$('g-dhw-bottom').setAttribute('stop-color', this._tankColor(bot));
-      this._txt('t-dhw-top', this._t(top));
+      this._txt('t-dhw-top', hasTop ? this._t(top) : '');
       this._txt('t-dhw-middle', this._has('dhw_middle') ? `${i.middle} ${this._t(this._n('dhw_middle'))}` : '');
-      this._txt('t-dhw-bottom', this._has('dhw_bottom') ? `${i.bottom} ${this._t(this._n('dhw_bottom'))}` : '');
+      // The position label only tells sensors apart; a single bottom sensor shows the bare value at the bottom.
+      const onlyBottom = !hasTop && !this._has('dhw_middle');
+      this._txt('t-dhw-bottom', this._has('dhw_bottom') ? `${onlyBottom ? '' : `${i.bottom} `}${this._t(this._n('dhw_bottom'))}` : '');
       const tgt = this._n('dhw_target');
       const parts = [];
       if (this._has('dhw_mode')) parts.push(this._modeLabel(dhwMode, this._s('dhw_mode')));
