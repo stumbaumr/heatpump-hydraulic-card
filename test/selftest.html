@@ -1803,6 +1803,20 @@
     card = mount({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
     check(!q(card, '#impeller-primary').classList.contains('on'), 'the primary pump stands still without a flow rate');
     card.remove();
+    // Sniffing: the compressor is off, the primary pump moves a few l/h. The water circulates slowly, the mode stays idle.
+    card = mount({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0.13', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
+    const imp = q(card, '#impeller-primary');
+    check(imp.classList.contains('on') && parseFloat(imp.style.animationDuration) >= 7, `sniffing: the primary pump turns slowly (${imp.style.animationDuration})`);
+    check(q(card, '#p-vl').classList.contains('on') && q(card, '#p-rl').classList.contains('on') && q(card, '#p-hc-vl').classList.contains('on'), 'sniffing: the water circulates through the heating circuit');
+    check(q(card, '#t-vol').textContent === '8 l/h' && parseFloat(card.style.getPropertyValue('--hfc-dur')) >= 5, `sniffing: slow flow with its flow rate (${q(card, '#t-vol').textContent})`);
+    check(!q(card, '#chip-mode').className.includes('mode-heat'), 'sniffing: the mode stays idle');
+    card.remove();
+    card = mount({ preset: 'heishamon' }, hassOf(st())); await wait(20);
+    check(parseFloat(q(card, '#impeller-primary').style.animationDuration) < 2, `heating: the primary pump turns at normal speed (${q(card, '#impeller-primary').style.animationDuration})`);
+    card.remove();
+    card = mount({ preset: 'heishamon', primary_pump: false }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0.13', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
+    check(!q(card, '#p-vl').classList.contains('on'), 'without the primary pump a flow rate alone does not start the flow');
+    card.remove();
     card = mount({ preset: 'heishamon', primary_pump: false }, hassOf(st())); await wait(20);
     check(!q(card, '#impeller-primary') && q(card, 'circle.pump[cx="720"]'), 'primary_pump: false draws the pump in the circuit again');
     card.remove();
