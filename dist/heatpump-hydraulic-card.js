@@ -3327,7 +3327,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const toHeat = !toDhw && (['heating', 'defrost', 'cooling'].includes(hp) || ['heating', 'cooling'].includes(bufMode));
     const loop = toDhw || toHeat;
     // The primary pump also runs without heating or hot water (Panasonic "sniffing", run-on): the water then circulates
-    // slowly along the valve path. It only moves the water, so mode chip, valve text, spread and heat stay idle.
+    // slowly along the valve path (flow dashes 2000 / l/h seconds, 6 to 30 s). It only moves the water, so mode chip, valve text, spread and heat stay idle.
     const circ = this._primaryPump() && !loop && Number.isFinite(vol) && vol > 0;
     const flowDhw = toDhw || (circ && valveDhw && !!P.dhw);
     const flowHeat = toHeat || (circ && !flowDhw);
@@ -3344,7 +3344,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const modOk = Number.isFinite(mod) && mod > 0;
     const speed = this._flowSpeed;
     const scaled = (seconds) => `${(seconds / speed).toFixed(2)}s`;
-    const dur = circ ? 6 : Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(3.4 - vol / 1000, 0.8), 3) : (modOk ? 2.6 - mod * 1.8 : 2);
+    const dur = circ ? Math.min(Math.max(2000 / vol, 6), 30) : Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(3.4 - vol / 1000, 0.8), 3) : (modOk ? 2.6 - mod * 1.8 : 2);
     this.style.setProperty('--hfc-dur', scaled(dur));
     // A fan speed entity wins: the fan runs on after the compressor stops. Numeric values are rpm, else on/off.
     const fanRpm = this._has('fan_speed') ? this._n('fan_speed') : NaN;
@@ -3373,7 +3373,7 @@ class HeatpumpFlowCard extends HTMLElement {
     // the flow rate, so a sniffing pump with a few l/h turns slowly.
     this._cls('impeller-primary', Number.isFinite(vol) ? vol > 0 : loop);
     const primary = this._$('impeller-primary');
-    if (primary) primary.style.animationDuration = Number.isFinite(vol) && vol > 0 ? scaled(Math.min(Math.max(800 / vol, 0.6), 8)) : '';
+    if (primary) primary.style.animationDuration = Number.isFinite(vol) && vol > 0 ? scaled(Math.min(Math.max(800 / vol, 0.6), 30)) : '';
     pipe('vl-dhw', flowDhw); pipe('rl-dhw', flowDhw);
     pipe('vl-buf', flowHeat); pipe('rl-buf', flowHeat);
     pipe('byp-vl', flowHeat); pipe('byp-rl', flowHeat);
