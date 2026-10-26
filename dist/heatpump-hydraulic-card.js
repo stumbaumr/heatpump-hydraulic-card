@@ -2072,11 +2072,11 @@ class HeatpumpFlowCard extends HTMLElement {
           ${this._sourceSvg()}
 
           ${this._unitPump() ? `<g class="tap" ${de(e.volume ? 'volume' : 'mode')}>
-            <circle class="pump" cx="340" cy="250" r="11"/>
-            <g class="impeller" id="impeller-unit" style="transform-origin:340px 250px"><path d="M340 242 L345 250 L335 250Z M340 258 L335 250 L345 250Z" class="imp"/></g>
+            <circle class="pump" cx="340" cy="250" r="18"/>
+            <g class="impeller" id="impeller-unit" style="transform-origin:340px 250px"><path d="M340 237 L347 250 L333 250Z M340 263 L333 250 L347 250Z" class="imp"/></g>
           </g>` : ''}
-          <g class="tap" ${de('flow')}><text class="pipe-label" id="t-vl" x="${this._unitPump() ? 340 : 338}" y="${this._unitPump() ? 233 : 236}" text-anchor="middle"></text></g>
-          <g class="tap" ${de('volume')}><text class="vol-label" id="t-vol" x="${this._unitPump() ? 340 : 346}" y="275" text-anchor="middle"></text></g>
+          <g class="tap" ${de('flow')}><text class="pipe-label" id="t-vl" x="${this._unitPump() ? 340 : 338}" y="${this._unitPump() ? 226 : 236}" text-anchor="middle"></text></g>
+          <g class="tap" ${de('volume')}><text class="vol-label" id="t-vol" x="${this._unitPump() ? 340 : 346}" y="${this._unitPump() ? 284 : 275}" text-anchor="middle"></text></g>
           <g class="tap" ${de('return')}><text class="pipe-label" id="t-rl" x="335" y="406" text-anchor="middle"></text></g>
 
           <g class="tap" ${de('mode')}>

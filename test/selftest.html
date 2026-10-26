@@ -1795,6 +1795,7 @@
     const mid = (r) => r.x + r.width / 2;
     check(Math.abs(mid(pump) - mid(q(card, '#t-vl').getBBox())) < 1 && Math.abs(mid(pump) - mid(q(card, '#t-vol').getBBox())) < 1, 'the water pump stands centred under the flow temperature and over the flow rate');
     check(apart(pump, q(card, '#t-vl').getBBox()) && apart(pump, q(card, '#t-vol').getBBox()), `the water pump keeps clear of the flow temperature and the flow rate (${[pump, q(card, '#t-vl').getBBox(), q(card, '#t-vol').getBBox()].map((r) => [r.x, r.y, r.width, r.height].map(Math.round).join(',')).join(' / ')})`);
+    check(q(card, '#impeller-unit').parentNode.querySelector('circle.pump').getAttribute('r') === '18', 'the water pump has the size of the 3-way valve (r 18)');
     check(!q(card, 'circle.pump[cx="720"]') && !q(card, '#impeller'), 'the single direct circuit has no pump of its own');
     check(q(card, '#impeller-unit').classList.contains('on'), 'the water pump turns with a flow rate');
     check(q(card, '#impeller-unit').closest('.tap').dataset.entity === `sensor.${p}_main_pump_flow`, 'a tap on the water pump opens the flow rate');
