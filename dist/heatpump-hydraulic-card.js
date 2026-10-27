@@ -1088,7 +1088,7 @@ const HFC_EDITOR = {
     flow_speed: 'Animation speed', source_spread: 'Show source spread',
     theme: 'Card theme', theme_auto: 'Automatic (dashboard)', theme_night: 'Night', theme_contrast: 'High contrast', fullscreen: 'Full-screen button',
     wall_timeout: 'Hide controls after (seconds, 0 = never)',
-    hc_return_label: 'Show circuit return temperature', primary_pump: 'Primary pump', series_buffer: 'Series buffer in the return (with bypass valve)', hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name', hc4_name: 'Circuit 4 name', hc5_name: 'Circuit 5 name', hc6_name: 'Circuit 6 name',
+    hc_return_label: 'Show circuit return temperature', primary_pump: 'Primary pump', series_buffer: 'Series buffer in the return', series_bypass: 'Series buffer with bypass valve (off: the circuits run in defrost)', hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name', hc4_name: 'Circuit 4 name', hc5_name: 'Circuit 5 name', hc6_name: 'Circuit 6 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_hc4: 'Heating circuit 4', sec_hc5: 'Heating circuit 5', sec_hc6: 'Heating circuit 6', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit', sec_cutouts: 'Details: cut-out counters',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
@@ -1150,7 +1150,7 @@ const HFC_EDITOR = {
     flow_speed: 'Animationsgeschwindigkeit', source_spread: 'Quellenspreizung anzeigen',
     theme: 'Kartendarstellung', theme_auto: 'Automatisch (Dashboard)', theme_night: 'Nacht', theme_contrast: 'Hoher Kontrast', fullscreen: 'Vollbild-Schaltfläche',
     wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
-    hc_return_label: 'Heizkreis-Rücklauf anzeigen', primary_pump: 'Primärpumpe', series_buffer: 'Reihenpuffer im Rücklauf (mit Bypass-Ventil)', hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3', hc4_name: 'Name Heizkreis 4', hc5_name: 'Name Heizkreis 5', hc6_name: 'Name Heizkreis 6',
+    hc_return_label: 'Heizkreis-Rücklauf anzeigen', primary_pump: 'Primärpumpe', series_buffer: 'Reihenpuffer im Rücklauf', series_bypass: 'Reihenpuffer mit Bypass-Ventil (aus: die Heizkreise laufen beim Abtauen)', hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3', hc4_name: 'Name Heizkreis 4', hc5_name: 'Name Heizkreis 5', hc6_name: 'Name Heizkreis 6',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_hc4: 'Heizkreis 4', sec_hc5: 'Heizkreis 5', sec_hc6: 'Heizkreis 6', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis', sec_cutouts: 'Details: Abschaltzähler',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
@@ -1481,6 +1481,7 @@ class HeatpumpFlowCard extends HTMLElement {
               { name: 'fullscreen', selector: { boolean: {} } },
               { name: 'hc_return_label', selector: { boolean: {} } },
               { name: 'series_buffer', selector: { boolean: {} } },
+              ...(config && config.series_buffer ? [{ name: 'series_bypass', selector: { boolean: {} } }] : []),
               ...['hc_name', 'hc2_name', 'hc3_name', 'hc4_name', 'hc5_name', 'hc6_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
               { name: 'unit_style', selector: { select: { mode: 'dropdown', options: HFC_UNIT_STYLES.map((v) => ({ value: v, label: L[`unit_${v}`] })) } } },
               ...(config && (config.unit_style === 'vaillant' || ((!config.unit_style || config.unit_style === 'auto') && config.preset === 'vaillant'))
@@ -1569,6 +1570,9 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     if (config.primary_pump !== undefined && config.primary_pump !== null && typeof config.primary_pump !== 'boolean') {
       throw new Error('primary_pump must be true or false');
+    }
+    if (config.series_bypass !== undefined && config.series_bypass !== null && typeof config.series_bypass !== 'boolean') {
+      throw new Error('series_bypass must be true or false');
     }
     if (config.texts !== undefined && config.texts !== null) HeatpumpFlowCard._validateTexts(config.texts);
     if (config.flow_speed !== undefined && config.flow_speed !== null && config.flow_speed !== '' && !(+config.flow_speed >= 0.2 && +config.flow_speed <= 3)) {
@@ -2160,7 +2164,7 @@ class HeatpumpFlowCard extends HTMLElement {
       dhw: ['dhw_top', 'dhw_middle', 'dhw_bottom', 'dhw_mode'].some((k) => this._has(k)),
       buffer,
       // A series buffer sits in the return; a parallel buffer (with its own sensors) wins.
-      series: !!this._config.series_buffer && !buffer,
+      series: !!this._config.series_buffer && !buffer && (this._noBypass() ? 'fixed' : 'valve'),
       // A direct system still has a circuit: use the heat-pump flow/return when no circuit-specific sensors exist.
       hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump') || (!buffer && (this._has('flow') || this._has('return'))),
       house: this._has('room') || this._has('room_target'),
@@ -2856,10 +2860,19 @@ class HeatpumpFlowCard extends HTMLElement {
   // Series buffer in the return of the heating circuits with a 3-way valve (A: bypass from the flow, B: circuit return, AB: buffer).
   // Normally B–AB is open: the circuit return runs through the buffer. In defrost (or with the bypass valve entity on) A–AB opens
   // and the flow runs straight into the buffer, past the circuits, so the heat pump defrosts from the buffer water.
+  // series_bypass: false: a series buffer without a bypass valve.
+  _noBypass() { return this._config.series_bypass === false; }
+
   _seriesSvg() {
     const e = this._e; const i = this._i;
     const pp = (id, d) => `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>`;
     const de = (k) => (e[k] ? `data-entity="${this._esc(e[k])}"` : '');
+    // Without a bypass valve the return always flows through the buffer.
+    if (this._noBypass()) {
+      return `${pp('byp-vl', 'M520 360 H600')}${pp('sb-vl', 'M600 360 H640')}${pp('sb-b', 'M640 495 H582')}${pp('byp-rl', 'M582 495 H520')}
+      <rect class="tank" id="sb-tank" x="450" y="452" width="116" height="86" rx="20"/>
+      <text class="small series-title" x="508" y="499" text-anchor="middle">${this._esc(i.series_tank)}</text>`;
+    }
     return `${pp('byp-vl', 'M520 360 H600')}${pp('sb-vl', 'M600 360 H640')}${pp('sb-a', 'M600 360 V477')}${pp('sb-b', 'M640 495 H618')}${pp('byp-rl', 'M582 495 H520')}
       <g class="tap" ${de(e.bypass_valve ? 'bypass_valve' : 'defrost')}>
         <rect class="tank" id="sb-tank" x="450" y="452" width="116" height="86" rx="20"/>
@@ -3595,7 +3608,8 @@ class HeatpumpFlowCard extends HTMLElement {
     pipe('vl-buf', flowHeat); pipe('rl-buf', flowHeat);
     pipe('byp-vl', flowHeat); pipe('byp-rl', flowHeat);
     // Series buffer: the bypass valve follows its own entity, else the defrost signal, and then stops the circuits.
-    const bypass = !!P.series && (this._has('bypass_valve') ? this._on('bypass_valve') : defrost);
+    // Without a bypass valve (series_bypass: false) the circuits keep running in defrost.
+    const bypass = !!P.series && !this._noBypass() && (this._has('bypass_valve') ? this._on('bypass_valve') : defrost);
     if (P.series) {
       stroke('sb-vl', cFlow); stroke('sb-a', cFlow); stroke('sb-b', cRet);
       pipe('sb-vl', flowHeat && !bypass); pipe('sb-a', flowHeat && bypass); pipe('sb-b', flowHeat && !bypass);
@@ -4197,7 +4211,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       errors: this._config.errors !== undefined ? this._config.errors : this._presetErrors,
       error_ok_text: (this._config.error_ok !== undefined ? this._config.error_ok : this._presetErrorOk).join(', '), tiles_custom: custom,
       animations: this._config.animations || 'auto', flow_speed: this._config.flow_speed ?? 1, source_spread: this._config.source_spread !== false,
-      theme: this._config.theme || 'auto', fullscreen: this._config.fullscreen !== false };
+      theme: this._config.theme || 'auto', fullscreen: this._config.fullscreen !== false, series_bypass: this._config.series_bypass !== false };
     if (this._config.controls === undefined && !r.presetControls.length) delete data.controls;
     if (custom && tiles.editable) data.tiles = tiles.value;
     this._priceShown = custom;

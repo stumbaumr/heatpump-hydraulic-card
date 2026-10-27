@@ -2106,8 +2106,30 @@
     card = mount({ entities: ents }, hassOf(st({ 'binary_sensor.d': 'on' }))); await wait(20);
     check(!q(card, 'sb-tank') && on(card, 'hc-vl'), 'without series_buffer nothing changes, the circuit runs in defrost');
     card.remove();
+    // series_bypass: false: a series buffer without a bypass valve, the circuits keep running in defrost
+    card = mount({ entities: ents, series_buffer: true, series_bypass: false }, hassOf(st({ 'binary_sensor.d': 'on' }))); await wait(20);
+    check(q(card, 'sb-tank') && !q(card, 'sb-arrow') && !q(card, 'p-sb-a') && !q(card, 't-bypass'), 'series_bypass: false draws the buffer without a bypass valve');
+    check(on(card, 'sb-vl') && on(card, 'sb-b') && on(card, 'byp-rl') && on(card, 'hc-vl'), 'series_bypass: false: the circuit runs in defrost, its return flows through the buffer');
+    card.remove();
+    let bad = '';
+    try { document.createElement('heatpump-flow-card').setConfig({ series_bypass: 'no' }); } catch (e) { bad = e.message; }
+    check(/series_bypass must be true or false/.test(bad), 'series_bypass is checked to be a boolean');
+    // More circuits: the buffer, its valve and its text keep clear of the risers and pipes of circuit 2 and up
+    for (const hc_count of [2, 3]) {
+      card = mount({ entities: ents, series_buffer: true, hc_count }, hassOf(st())); await wait(20);
+      const box = (el) => { const b = el.getBBox(); const m = el.getCTM(); return { x: b.x + m.e, y: b.y + m.f, w: b.width, h: b.height }; };
+      const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      const own = ['sb-tank', 'sb-arrow', 't-bypass'].map((id) => q(card, id)).concat([...card.shadowRoot.querySelectorAll('.series-title, circle.valve[cx="600"]')]);
+      const others = [...card.shadowRoot.querySelectorAll('[id^="p-hc-"], [id^="t-hc"], circle.pump, .radiator, .screed')].filter((el) => /[2-6]$/.test(el.id || '') || el.closest('g[transform^="translate(0 "]:not([transform="translate(0 0)"])'));
+      const clashes = own.flatMap((a) => others.filter((b) => hit(box(a), box(b))).map((b) => `${a.id || a.getAttribute('class')} / ${b.id || b.getAttribute('class')}`));
+      check(others.length > 0 && clashes.length === 0, `${hc_count} circuits: the series buffer keeps clear of the other circuits (${clashes.join(', ') || others.length + ' parts checked'})`);
+      check(on(card, 'sb-b') && on(card, 'hc-vl2'), `${hc_count} circuits: the return of all circuits flows through the series buffer`);
+      card.remove();
+    }
     const keys = C._formSchema({}).schema.flatMap(function keysOf(n) { return n.schema ? n.schema.flatMap(keysOf) : [n.name]; });
     check(keys.includes('series_buffer') && keys.includes('bypass_valve'), 'editor offers the series buffer and its bypass valve');
+    const keysWith = C._formSchema({ series_buffer: true }).schema.flatMap(function keysOf(n) { return n.schema ? n.schema.flatMap(keysOf) : [n.name]; });
+    check(!keys.includes('series_bypass') && keysWith.includes('series_bypass'), 'editor offers series_bypass only with a series buffer');
   }
 
   // 18n. fan speed: the fan follows its own speed entity (it runs on after the compressor stops), else the running state
