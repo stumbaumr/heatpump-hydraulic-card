@@ -1816,6 +1816,13 @@
     card = mount({ preset: 'heishamon' }, hassOf(st())); await wait(20);
     check(parseFloat(q(card, '#impeller-primary').style.animationDuration) < 2, `heating: the primary pump turns at normal speed (${q(card, '#impeller-primary').style.animationDuration})`);
     card.remove();
+    // The flow dashes follow the pump: double the flow rate, half the cycle time.
+    const durAt = async (lmin) => {
+      card = mount({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: [lmin, 'l/min'] }))); await wait(20);
+      const d = parseFloat(card.style.getPropertyValue('--hfc-dur')); card.remove(); return d;
+    };
+    const d10 = await durAt('10'), d20 = await durAt('20');
+    check(Math.abs(d10 / d20 - 2) < 0.05 && d10 < 2, `the flow speed is proportional to the flow rate (10 l/min ${d10}s, 20 l/min ${d20}s)`);
     card = mount({ preset: 'heishamon', primary_pump: false }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0.13', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
     check(!q(card, '#p-vl').classList.contains('on'), 'without the primary pump a flow rate alone does not start the flow');
     card.remove();
