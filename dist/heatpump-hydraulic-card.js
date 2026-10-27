@@ -3562,8 +3562,10 @@ class HeatpumpFlowCard extends HTMLElement {
     const dur = Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(1000 / vol, 0.4), 30) : (modOk ? 2.6 - mod * 1.8 : 2);
     this.style.setProperty('--hfc-dur', scaled(dur));
     // A fan speed entity wins: the fan runs on after the compressor stops. Numeric values are rpm, else on/off.
-    const fanRpm = this._has('fan_speed') ? this._n('fan_speed') : NaN;
-    const fanOn = this._has('fan_speed') ? (Number.isFinite(fanRpm) ? fanRpm > 0 : this._on('fan_speed')) : running;
+    // An unavailable or unknown fan entity (integration offline, Home Assistant restart) counts as missing.
+    const fanKnown = this._has('fan_speed') && !['unavailable', 'unknown'].includes(String(this._s('fan_speed')).toLowerCase());
+    const fanRpm = fanKnown ? this._n('fan_speed') : NaN;
+    const fanOn = fanKnown ? (Number.isFinite(fanRpm) ? fanRpm > 0 : this._on('fan_speed')) : running;
     const fanDur = !fanOn ? 0 : Number.isFinite(fanRpm) ? Math.min(Math.max(2.4 - fanRpm / 500, 0.5), 2.4)
       : (modOk ? 2.4 - mod * 1.9 : Math.min(Math.max(2.4 - (power || 0) / 1500, 0.5), 2.4));
     this.style.setProperty('--hfc-fan', scaled(fanDur));

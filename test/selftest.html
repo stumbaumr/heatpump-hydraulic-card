@@ -2129,6 +2129,12 @@
     const fast = parseFloat(card.style.getPropertyValue('--hfc-fan'));
     card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: ['300', 'R/min'] })); await wait(5);
     check(fast < parseFloat(card.style.getPropertyValue('--hfc-fan')), 'a higher fan speed turns the fan faster');
+    for (const state of ['unavailable', 'unknown']) {
+      card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: state, [`sensor.${p}_main_compressor_freq`]: ['30', 'Hz'] })); await wait(5);
+      check(fan(card).classList.contains('on'), `a fan speed entity that is ${state} falls back to the running state (compressor on)`);
+      card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: state, [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] })); await wait(5);
+      check(!fan(card).classList.contains('on'), `a fan speed entity that is ${state} falls back to the running state (compressor off)`);
+    }
     card.remove();
     card = mount({ entities: { flow: 'sensor.f', compressor: 'binary_sensor.c', fan_speed: 'binary_sensor.fan' } },
       hassOf(toStates({ 'sensor.f': ['35', '°C'], 'binary_sensor.c': 'off', 'binary_sensor.fan': 'on' }))); await wait(20);
