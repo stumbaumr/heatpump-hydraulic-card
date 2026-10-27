@@ -2,3 +2,4 @@
 - Heating curve shift: the flow temperature under the circuit comes only from the circuit's own flow sensor (`hc_flow`). Without one the heat pump's flow stands only at the VL label and is not shown twice.
 - Heating curve shift: with a shift of 0 the label shows only the target ("Target 34 °C"), without "(curve 34 °C + 0 K shift)".
 - Flow animation: the dash speed is proportional to the flow rate (1000 l/h = one dash cycle per second), so the water visibly speeds up and slows down with the pump. Before, 600 and 1200 l/h looked almost the same.
+- Sniffing: the heat waves above the emitter stop, because the circulating water brings no heat to the circuit (only without a buffer).

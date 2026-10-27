@@ -1806,15 +1806,17 @@
     check(!q(card, '#impeller-primary').classList.contains('on'), 'the primary pump stands still without a flow rate');
     card.remove();
     // Sniffing: the compressor is off, the primary pump moves a few l/h. The water circulates slowly, the mode stays idle.
-    card = mount({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0.13', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
+    card = mount({ preset: 'heishamon', hc_type: 'radiator' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0.13', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
     const imp = q(card, '#impeller-primary');
     check(imp.classList.contains('on') && parseFloat(imp.style.animationDuration) >= 29, `sniffing: the primary pump turns slowly (${imp.style.animationDuration})`);
     check(q(card, '#p-vl').classList.contains('on') && q(card, '#p-rl').classList.contains('on') && q(card, '#p-hc-vl').classList.contains('on'), 'sniffing: the water circulates through the heating circuit');
     check(q(card, '#t-vol').textContent === '8 l/h' && parseFloat(card.style.getPropertyValue('--hfc-dur')) >= 29, `sniffing: slow flow with its flow rate (${q(card, '#t-vol').textContent})`);
     check(!q(card, '#chip-mode').className.includes('mode-heat'), 'sniffing: the mode stays idle');
+    check(!q(card, '#waves').classList.contains('on'), 'sniffing: the emitter gives off no heat');
     card.remove();
-    card = mount({ preset: 'heishamon' }, hassOf(st())); await wait(20);
+    card = mount({ preset: 'heishamon', hc_type: 'radiator' }, hassOf(st())); await wait(20);
     check(parseFloat(q(card, '#impeller-primary').style.animationDuration) < 2, `heating: the primary pump turns at normal speed (${q(card, '#impeller-primary').style.animationDuration})`);
+    check(q(card, '#waves').classList.contains('on'), 'heating: the emitter gives off heat');
     card.remove();
     // The flow dashes follow the pump: double the flow rate, half the cycle time.
     const durAt = async (lmin) => {

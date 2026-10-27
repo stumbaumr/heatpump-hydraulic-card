@@ -3415,7 +3415,8 @@ class HeatpumpFlowCard extends HTMLElement {
           body.style.stroke = grad ? `url(#g-hcb${s})` : '';
         }
         this._cls(`impeller${s}`, hcOn);
-        this._cls(`waves${s}`, hcOn && cMode !== 'cooling');
+        // Sniffing only moves the water: without a buffer no heat reaches the circuit, so the emitter gives off no heat.
+        this._cls(`waves${s}`, hcOn && cMode !== 'cooling' && !(circ && !P.buffer));
         const set = this._n(k('setpoint'));
         const showFlow = this._has(k('flow')) || (n === 1 && !P.buffer && this._has('flow'));
         const hcVol = this._lh(k('volume'));
