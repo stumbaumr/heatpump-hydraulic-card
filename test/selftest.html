@@ -185,6 +185,244 @@
     check(!detects('wolf', w, Object.fromEntries(Object.keys(w).map((id) => [id, { platform: 'mqtt' }]))), 'same entity names on another platform are not Wolf');
   }
 
+  // PointT cloud: stable resource identities, never personal names or an EMS-ESP prefix.
+  {
+    const fixture = pointtSetup();
+    const cfg = { preset: 'bosch_buderus_heating', power_sources: 'manual' };
+    const hass = hassOf(toStates(fixture.states), fixture.registry);
+    const byKey = (key, domain = 'sensor', f = fixture) => Object.keys(f.registry).find((id) =>
+      id.startsWith(`${domain}.`) && f.registry[id].unique_id.endsWith(`:${key}`));
+    const r = C._resolve(cfg, hass);
+    check(Object.keys(C._registry(undefined)).length === 0, 'Registry context tolerates HA not being ready');
+    check(r.ready && C.getStubConfig(hass).preset === cfg.preset, 'PointT is detected from the integration registry');
+    check(!HFC_PRESETS.bosch_buderus_heating.tested, 'PointT preset does not claim a real installation test');
+    check(r.entities.flow === byKey('gateway:supply_temperature'), 'PointT renamed flow temperature');
+    check(r.entities.return === byKey('gateway:return_temperature'), 'PointT legacy return identity');
+    check(r.entities.room_target === byKey('heatingCircuits:hc1:currentRoomSetpoint'), 'PointT room target remains a room target');
+    check(!r.entities.hc_setpoint && !r.entities.cond_temp && !r.entities.heater, 'PointT does not mislabel room target, TC3 or auxiliary status');
+    check(!r.entities.power && !r.entities.heat && !r.entities.volume, 'PointT does not invent instantaneous power or flow');
+    check(!r.entities.hc_mode && !r.entities.hc_pump, 'PointT settings are not treated as pump-running signals');
+    check(r.entities.starts_total === byKey('heatSources:hs1:numberOfStarts:total'), 'PointT specific compressor start counter');
+    check(r.entities.starts_total !== byKey('heatSources:numberOfStarts'), 'PointT general and compressor starts stay separate');
+    check(r.entities.hours !== byKey('heatSources:workingTime:totalSystem'), 'PointT system and compressor runtime stay separate');
+    check(r.tiles.energy_heating.total === byKey('gateway:heating_electricity'), 'PointT heating electricity includes the auxiliary heater');
+    check(r.tiles.heat_dhw.total === byKey('gateway:hot_water_heat_produced'), 'PointT DHW heat counter');
+    check(r.tiles.cycles_heating.total === byKey('heatSources:hs1:numberOfStarts:ch'), 'PointT heating starts catalog source');
+    check(!r.tiles.energy_cooling, 'PointT compressor-only cooling energy is not assumed to be system electricity');
+    check(Object.values(r.tiles).every((periods) => Object.keys(periods).every((p) => p === 'total')), 'PointT cumulative counters are not labelled as daily readings');
+    const defaults = [byKey('heatingCircuits:hc1:operationMode:control', 'select'),
+      byKey('dhwCircuits:dhw1:operationMode:control', 'select'), byKey('dhwCircuits:dhw1:charge:control', 'switch')];
+    check(JSON.stringify(r.controls) === JSON.stringify(defaults), 'PointT defaults contain only circuit modes and one-time DHW charge');
+    check(r.details.includes(byKey('heatSources:hs1:supplyFlowCondenserTemp')), 'PointT TC3 is an additional value, not a refrigerant temperature');
+    check(r.details.includes(byKey('heatSources:numberOfStarts')), 'PointT general start counter remains available in details');
+    const r2 = C._resolve({ ...cfg, index: { hc: 2, dhw: 2 } }, hass);
+    check(r2.entities.room_target === byKey('heatingCircuits:hc2:currentRoomSetpoint'), 'PointT selected HC2 room target');
+    check(r2.entities.dhw_top === byKey('dhwCircuits:dhw2:actualTemp'), 'PointT DHW2 never falls back to DHW1');
+    check(r2.controls.includes(byKey('heatingCircuits:hc2:operationMode:control', 'select')), 'PointT controls target selected HC2');
+    check(!r2.controls.includes(byKey('heatingCircuits:hc1:operationMode:control', 'select')), 'PointT controls do not mix HC1 and HC2');
+    const absentCircuit = C._resolve({ ...cfg, index: { hc: 3, dhw: 3 } }, hass);
+    check(!absentCircuit.entities.room_target && !absentCircuit.entities.dhw_top, 'PointT absent circuit has no guessed fallback');
+    check(!absentCircuit.controls.length, 'PointT absent circuits do not offer controls from another circuit');
+    const multi = C._resolve({ ...cfg, hc_count: 2 }, hass);
+    check(multi.entities.hc2_flow === byKey('heatingCircuits:hc2:actualSupplyTemperature'), 'PointT second hydraulic circuit flow');
+
+    const card = mount(cfg, hass);
+    check(card._controlList().length === 3 && card._drawerRows().length > 0, 'PointT short default control list and details render');
+    check(!card.shadowRoot.querySelector('input[type="number"], input[type="range"]'), 'PointT default card does not expose setpoint inputs');
+    check(card.shadowRoot.getElementById('t-hp-cop').textContent === '', 'PointT no live COP without instantaneous power');
+    check(C._diagnosticReport(cfg, hass).includes(r.controls[0]), 'PointT diagnostic includes automatic controls');
+    check(!C._diagnosticReport(cfg, hass).includes('demo-pointt:'), 'PointT diagnostic excludes gateway unique identifiers');
+    let writes = 0;
+    card._hass.callService = () => { writes++; return Promise.resolve(); };
+    card.hass = card._hass;
+    check(writes === 0, 'PointT mounting and polling never operate a control');
+    card.setConfig({ ...cfg, controls: [], details: [], entities: { flow: null } });
+    check(!card._controlList().length && !card._details.length && !card._e.flow, 'PointT explicit empty lists and null overrides are respected');
+    card.remove();
+
+    for (const [state, running] of [['heating', true], ['dhw', true], ['cooling', true], ['defrost', true],
+      ['off', false], ['alarm', false], ['pool', false], ['pool_heat', false], ['unknown', false], ['unavailable', false]]) {
+      const st = toStates(fixture.states);
+      st[byKey('heatSources:compressor:status')].state = state;
+      const c = mount(cfg, hassOf(st, fixture.registry));
+      check(c.shadowRoot.getElementById('fan').classList.contains('on') === running, `PointT compressor state ${state}`);
+      c.remove();
+    }
+
+    const other = pointtSetup('dhw', 'second-gateway', 'second_');
+    const merged = hassOf(toStates({ ...fixture.states, ...other.states }), { ...fixture.registry, ...other.registry });
+    check(!C._resolve(cfg, merged).ready && !Object.keys(C._resolve(cfg, merged).entities).length, 'PointT several gateways require device selection');
+    const selected = C._resolve({ ...cfg, device: 'device-second-gateway' }, merged);
+    check(selected.ready && Object.values(selected.entities).every((id) => id.includes('second_')), 'PointT selected gateway supplies every mapping');
+    check(selected.controls.every((id) => id.includes('second_')), 'PointT selected gateway supplies every control');
+    check(Object.values(selected.tiles).every((p) => p.total.includes('second_')), 'PointT selected gateway supplies every statistic');
+    const writesToSelected = [];
+    const selectedCard = mount({ ...cfg, device: 'device-second-gateway', index: { hc: 2 } },
+      { ...merged, callService: (...args) => { writesToSelected.push(args); return Promise.resolve(); } });
+    selectedCard._control(0, 'manual');
+    const expectedControl = byKey('heatingCircuits:hc2:operationMode:control', 'select', other);
+    check(writesToSelected.length === 1 && writesToSelected[0][0] === 'select'
+      && writesToSelected[0][1] === 'select_option' && writesToSelected[0][2].entity_id === expectedControl
+      && writesToSelected[0][2].option === 'manual', 'PointT simulated control targets HC2 on the selected gateway');
+    const manualSetpoint = byKey('heatingCircuits:hc2:manualRoomSetpoint:control', 'number', other);
+    const optionalControls = [{ entity: manualSetpoint, name: 'Selected room target' },
+      byKey('system:silentMode:enabled:control', 'select', other), byKey('system:awayMode:enabled:control', 'switch', other)];
+    selectedCard.setConfig({ ...cfg, device: 'device-second-gateway', index: { hc: 2 }, controls: optionalControls });
+    check(selectedCard._controlList().length === 3 && selectedCard._controlList()[0].name === 'Selected room target',
+      'PointT explicit optional controls replace the defaults and preserve custom labels');
+    const numeric = selectedCard._controlList().findIndex((c) => c.entity === manualSetpoint);
+    const numberElement = selectedCard.shadowRoot.getElementById(`ctl-${numeric}`);
+    check(numberElement.min === '5' && numberElement.max === '80' && numberElement.step === '0.5', 'PointT numeric controls inherit actual bounds and step');
+    selectedCard.remove();
+    check(!C._resolve({ ...cfg, device: 'missing-device' }, merged).ready, 'PointT unknown device does not select another gateway');
+    check(!C._resolve({ ...cfg, index: { hp: 2 } }, hass).ready, 'PointT global counters are not assigned to HP2');
+
+    const sparse = structuredClone(fixture);
+    delete sparse.states[byKey('gateway:outdoor_temperature')];
+    sparse.registry[byKey('gateway:supply_temperature')].disabled_by = 'user';
+    sparse.registry[defaults[0]].disabled_by = 'user';
+    delete sparse.states[defaults[2]];
+    const sparseResult = C._resolve(cfg, hassOf(toStates(sparse.states), sparse.registry));
+    check(!sparseResult.entities.outdoor && !sparseResult.entities.flow, 'PointT ignores missing and disabled entities');
+    check(JSON.stringify(sparseResult.controls) === JSON.stringify([defaults[1]]), 'PointT missing or disabled controls are omitted');
+    const foreign = Object.fromEntries(Object.entries(fixture.registry).map(([id, e]) => [id, { ...e, platform: 'mqtt' }]));
+    check(!C._resolve(cfg, hassOf(toStates(fixture.states), foreign)).ready, 'PointT rejects foreign integration identities');
+    const gas = structuredClone(fixture);
+    delete gas.registry[byKey('heatSources:compressor:status')];
+    check(!C._resolve(cfg, hassOf(toStates(gas.states), gas.registry)).ready, 'PointT temperatures alone do not identify a heat pump');
+    const cascade = structuredClone(fixture);
+    cascade.states['sensor.second_heatpump'] = { state: 'air_water', attributes: {} };
+    cascade.registry['sensor.second_heatpump'] = { platform: 'bosch_buderus_heating', unique_id: 'demo-pointt:heatSources:hs2:heatPumpType' };
+    check(!C._resolve(cfg, hassOf(toStates(cascade.states), cascade.registry)).ready, 'PointT ambiguous cascade requires manual mappings');
+    const duplicate = structuredClone(fixture);
+    duplicate.states['sensor.duplicate_flow'] = duplicate.states[byKey('gateway:supply_temperature')];
+    duplicate.registry['sensor.duplicate_flow'] = duplicate.registry[byKey('gateway:supply_temperature')];
+    check(!C._resolve(cfg, hassOf(toStates(duplicate.states), duplicate.registry)).entities.flow, 'PointT ambiguous resource identity is not guessed');
+
+    const semantic = structuredClone(fixture);
+    const aliases = { 'gateway:supply_temperature': 'heatSources:actualSupplyTemperature', 'gateway:return_temperature': 'heatSources:returnTemperature',
+      'gateway:total_electricity': 'heatSources:emon:totalConsumption:total_electricity', 'gateway:total_heat_produced': 'heatSources:emon:totalConsumption:outputProduced' };
+    for (const [legacy, resource] of Object.entries(aliases)) semantic.registry[byKey(legacy)].unique_id = `demo-pointt:${resource}`;
+    const semanticResult = C._resolve(cfg, hassOf(toStates(semantic.states), semantic.registry));
+    check(semanticResult.entities.flow === r.entities.flow && semanticResult.entities.return === r.entities.return, 'PointT semantic temperature identities');
+    check(semanticResult.entities.energy_total === r.entities.energy_total && semanticResult.tiles.heat.total === r.tiles.heat.total, 'PointT semantic energy identities');
+
+    const lateStates = toStates(fixture.states);
+    const lateId = byKey('gateway:outdoor_temperature'); const late = lateStates[lateId]; delete lateStates[lateId];
+    const lateHass = hassOf(lateStates, fixture.registry); const lateCard = mount(cfg, lateHass);
+    const lateEditor = document.createElement('heatpump-flow-card-editor'); lateEditor.setConfig(cfg); lateEditor.hass = lateHass;
+    check(!lateCard._e.outdoor, 'PointT missing state is initially omitted');
+    const arrived = { ...lateHass, states: { ...lateStates, [lateId]: late } };
+    lateCard.hass = arrived; lateEditor.hass = arrived;
+    check(lateCard._e.outdoor === lateId, 'PointT state arriving after registry is mapped without a reload');
+    check(lateEditor._fromPreset.outdoor === lateId, 'PointT editor also detects late states');
+    const exchangedStates = { ...lateStates, [lateId]: late }; delete exchangedStates[r.entities.flow];
+    lateCard.hass = { ...lateHass, states: exchangedStates }; lateEditor.hass = { ...lateHass, states: exchangedStates };
+    check(!lateCard._e.flow && lateCard._e.outdoor === lateId && !lateEditor._fromPreset.flow,
+      'PointT removal refreshes both card and editor');
+    lateCard.hass = lateHass; lateEditor.hass = lateHass;
+    check(lateCard._e.flow === r.entities.flow && !lateCard._e.outdoor
+      && lateEditor._fromPreset.flow === r.entities.flow && !lateEditor._fromPreset.outdoor,
+      'PointT detects exchanged entities even when the matching state count stays the same');
+    lateCard.remove(); lateEditor.remove();
+
+    const editor = document.createElement('heatpump-flow-card-editor');
+    editor.setConfig(cfg); editor.hass = hass;
+    check(editor._form.data.controls.length === 3, 'PointT editor shows the short default control list');
+    editor._changed({ ...editor._form.data, title: 'Renamed card' });
+    check(editor._config.controls === undefined, 'PointT editor preserves automatic controls on unrelated edits');
+    editor._changed({ ...editor._form.data, controls: [] });
+    check(Array.isArray(editor._config.controls) && !editor._config.controls.length, 'PointT editor can hide all automatic controls');
+    editor.remove();
+  }
+
+  // PointT registry loading is local, shared, bounded and isolated by HA connection.
+  {
+    const fixture = pointtSetup();
+    const compact = Object.fromEntries(Object.entries(fixture.registry).map(([id, { unique_id, ...e }]) => [id, e]));
+    const entries = Object.entries(fixture.registry).map(([entity_id, e]) => ({ entity_id, ...e }));
+    const cfg = { preset: 'bosch_buderus_heating', power_sources: 'manual', tiles: [] };
+    let requests = 0; let finish;
+    const pending = new Promise((resolve) => { finish = resolve; });
+    const hass = { ...hassOf(toStates(fixture.states), compact), connection: {}, callWS: (m) => {
+      if (m.type !== 'config/entity_registry/list') return Promise.reject(new Error('Unexpected request'));
+      requests++; return pending;
+    } };
+    check(C.getStubConfig(hass).preset === cfg.preset, 'PointT offered from compact registry before loading unique ids');
+    const a = mount(cfg, hass); const b = mount(cfg, hass);
+    const editor = document.createElement('heatpump-flow-card-editor'); editor.setConfig(cfg); editor.hass = hass;
+    await wait(5);
+    check(requests === 1 && a._needsBuild, 'PointT card and editor share one pending registry request');
+    finish(entries); await wait(20);
+    check(!a._needsBuild && !b._needsBuild && !!a._e.flow, 'PointT automatically rebuilds after registry arrives');
+    check(editor._fromPreset.flow === a._e.flow, 'PointT editor refreshes after registry arrives');
+    for (let n = 0; n < 5; n++) a.hass = { ...hass };
+    await wait(5);
+    check(requests === 1, 'PointT ordinary polling does not reload the registry');
+    a.hass = { ...hass, entities: { ...compact } }; await wait(20);
+    check(requests === 2, 'PointT a compact registry change refreshes stable identities');
+    const separate = mount(cfg, { ...hass, connection: {} }); await wait(20);
+    check(requests === 3, 'PointT registry cache is isolated between connections');
+    a.remove(); b.remove(); editor.remove(); separate.remove();
+
+    let deniedRequests = 0;
+    const denied = { ...hass, connection: {}, callWS: () => { deniedRequests++; return Promise.reject(new Error('Unauthorized')); } };
+    const manual = Object.keys(fixture.states)[1];
+    const c = mount({ ...cfg, entities: { flow: manual }, controls: [] }, denied);
+    await wait(20);
+    for (let n = 0; n < 5; n++) c.hass = { ...denied };
+    check(ok(c) && c._e.flow === manual && c._needsBuild, 'PointT denied registry access leaves manual mappings usable');
+    check(deniedRequests === 1, 'PointT failed registry request does not flood HA');
+    c.remove();
+    const generic = mount({ power_sources: 'manual' }, denied); await wait(5);
+    check(deniedRequests === 1, 'Manual cards never request the full registry'); generic.remove();
+    const malformed = mount(cfg, { ...hass, connection: {}, callWS: () => Promise.resolve({ invalid: true }) });
+    await wait(10);
+    check(ok(malformed) && malformed._needsBuild, 'PointT malformed registry response fails without breaking the card');
+    malformed.remove();
+  }
+
+  // PointT updates do not scan unrelated states, and registry changes still refresh mappings.
+  {
+    const fixture = pointtSetup(); const cfg = { preset: 'bosch_buderus_heating', power_sources: 'manual', tiles: [] };
+    const baseStates = toStates(fixture.states);
+    for (let n = 0; n < 2000; n++) baseStates[`sensor.unrelated_${n}`] = { state: '1', attributes: {} };
+    let stateScans = 0; let registryScans = 0;
+    const registry = new Proxy({ ...fixture.registry }, { ownKeys(target) { registryScans++; return Reflect.ownKeys(target); } });
+    const hass = hassOf(baseStates, registry);
+    const card = mount(cfg, hass);
+    const editor = document.createElement('heatpump-flow-card-editor'); editor.setConfig(cfg); editor.hass = hass;
+    await wait(20);
+    const initialRegistryScans = registryScans;
+    const originalControl = card.shadowRoot.getElementById('ctl-0');
+    const flowId = card._e.flow;
+    for (let n = 0; n < 4; n++) {
+      const states = new Proxy({ ...baseStates, [flowId]: { ...baseStates[flowId], state: String(35 + n) },
+        [`sensor.unrelated_new_${n}`]: { state: '1', attributes: {} } },
+      { ownKeys(target) { stateScans++; return Reflect.ownKeys(target); } });
+      const next = { ...hass, states };
+      card.hass = next; editor.hass = next;
+    }
+    check(stateScans === 0 && registryScans === initialRegistryScans,
+      'PointT value updates with thousands of unrelated states do not enumerate states or rescan the registry');
+    check(card.shadowRoot.getElementById('ctl-0') === originalControl && card._hass.states[flowId].state === '38',
+      'PointT value updates preserve existing controls while displaying the latest state');
+
+    const renamedId = 'sensor.renamed_pointt_flow';
+    const renamedRegistry = { ...fixture.registry, [renamedId]: fixture.registry[flowId] }; delete renamedRegistry[flowId];
+    const renamedStates = { ...baseStates, [renamedId]: baseStates[flowId] }; delete renamedStates[flowId];
+    const renamed = { ...hass, entities: renamedRegistry, states: renamedStates };
+    card.hass = renamed; editor.hass = renamed; await wait(20);
+    check(card._e.flow === renamedId && editor._fromPreset.flow === renamedId,
+      'PointT registry replacement with the same entity count refreshes renamed mappings');
+    const disabled = { ...renamed, entities: { ...renamedRegistry, [renamedId]: { ...renamedRegistry[renamedId], disabled_by: 'user' } } };
+    card.hass = disabled; editor.hass = disabled; await wait(20);
+    check(!card._e.flow && !editor._fromPreset.flow, 'PointT registry updates remove newly disabled entities');
+    card.hass = renamed; editor.hass = renamed; await wait(20);
+    check(card._e.flow === renamedId && editor._fromPreset.flow === renamedId, 'PointT re-enabled entities recover without a reload');
+    card.remove(); editor.remove();
+  }
+
   // 5a. Wolf (wolf_smartset): found by translation key with any entity ids, wolflink unchanged, wolf_smartset wins when both exist,
   // Wolf's capitalised state texts (Heizbetrieb, Warmwasser, Ein, Aus, Betrieb) map like the wolflink slugs
   {
@@ -2084,6 +2322,30 @@
       check(grad.querySelector('stop').id === 'g-rad-top' && top !== 'rgb(0, 0, 0)', `${hc_count} circuit(s): the radiator ribs show the flow colour, not black (${top})`);
       card.remove();
     }
+  }
+
+  // 21. built-in languages: a partly translated language works without gaps and shows up in the editor (docs/TRANSLATING.md)
+  {
+    HFC_LANGUAGES.xx = 'Xxish';
+    HFC_I18N.xx = { title: 'Xx title', det: { hours: 'Xx hours' }, modes: { heating: 'Xx heating' } };
+    HFC_EDITOR.xx = { title: 'Xx editor title' };
+    try {
+      const options = C._formSchema({ texts: { nl: { title: 'x' } } }).schema.flatMap(function find(n) { return n.name === 'language' ? [n.selector.select.options] : n.schema ? n.schema.flatMap(find) : []; })[0];
+      check(options[0].value === 'auto' && ['de', 'en', 'xx', 'nl'].every((v) => options.some((o) => o.value === v)), 'the editor lists Auto, the built-in languages and the custom ones');
+      check(options.find((o) => o.value === 'xx').label === 'Xxish' && options.find((o) => o.value === 'de').label === 'Deutsch', 'built-in languages are listed with their own name');
+      check(options.filter((o) => o.value === 'de').length === 1 && options.filter((o) => o.value === 'xx').length === 1, 'a language is listed once');
+      check(hfcBuiltin(HFC_EDITOR, 'xx').title === 'Xx editor title' && hfcBuiltin(HFC_EDITOR, 'xx').preset === HFC_EDITOR.en.preset, 'editor labels of a partial language fall back to English');
+      check(hfcBuiltin(HFC_I18N, 'xx').det.hours === 'Xx hours' && hfcBuiltin(HFC_I18N, 'xx').det.starts_total === HFC_I18N.en.det.starts_total, 'nested texts of a partial language fall back to English');
+      const states = toStates({ 'sensor.flow': ['35', '°C'], 'sensor.return': ['30', '°C'] });
+      const xx = mount({ language: 'xx', entities: { flow: 'sensor.flow', return: 'sensor.return' } }, hassOf(states)); await wait(20);
+      check(ok(xx) && xx._lang === 'xx' && xx.shadowRoot.querySelector('.title').textContent === 'Xx title' && xx._i.compressor_off === HFC_I18N.en.compressor_off,
+        'a built-in language selects by code and the missing card texts are English');
+      xx.remove();
+      const regional = mount({ language: 'xx-yy', entities: { flow: 'sensor.flow', return: 'sensor.return' } }, hassOf(states)); await wait(20);
+      check(regional._lang === 'xx', 'a regional variant uses the built-in language of its base code');
+      regional.remove();
+      check(C._language({}, { locale: { language: 'xx-YY' } }) === 'xx' && C._language({}, { locale: { language: 'qq' } }) === 'en', 'the Home Assistant language selects a built-in language, unknown ones use English');
+    } finally { delete HFC_LANGUAGES.xx; delete HFC_I18N.xx; delete HFC_EDITOR.xx; }
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

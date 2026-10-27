@@ -1,0 +1,33 @@
+{
+  "preset": "bosch_buderus_heating",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": "0.8.2-beta.7",
+    "note": "Source review at fbe84bfb46383722d1a2757e7e778463db67f6f0. The automatic preset has not yet been tested on an installation."
+  },
+  "sources": [
+    {
+      "repo": "SoftwareSchmied/ha-bosch-buderus-heating",
+      "branch": "main",
+      "paths": [
+        "custom_components/bosch_buderus_heating/sensor.py",
+        "custom_components/bosch_buderus_heating/binary_sensor.py",
+        "custom_components/bosch_buderus_heating/select.py",
+        "custom_components/bosch_buderus_heating/number.py",
+        "custom_components/bosch_buderus_heating/switch.py",
+        "custom_components/bosch_buderus_heating/resource_catalog.py",
+        "custom_components/bosch_buderus_heating/device.py",
+        "custom_components/bosch_buderus_heating/enum_translation.py",
+        "custom_components/bosch_buderus_heating/writes.py",
+        "custom_components/bosch_buderus_heating/start_counters.py",
+        "custom_components/bosch_buderus_heating/read_contracts.py",
+        "custom_components/bosch_buderus_heating/energy_contracts.py",
+        "custom_components/bosch_buderus_heating/unit_contracts.py",
+        "custom_components/bosch_buderus_heating/strings.json",
+        "custom_components/bosch_buderus_heating/translations/en.json",
+        "custom_components/bosch_buderus_heating/translations/de.json"
+      ],
+      "releases": true
+    }
+  ]
+}

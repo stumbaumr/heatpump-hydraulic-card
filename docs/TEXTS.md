@@ -1,5 +1,7 @@
 # Custom text reference
 
+This page describes `texts`, the configuration of your own installation. To add a language that is built in for everybody, including the editor, see [TRANSLATING.md](TRANSLATING.md).
+
 `texts` is a nested YAML map keyed by lowercase language codes. Select one with `language`; missing entries always fall back to English. Existing English or German labels can also be overridden by defining `texts.en` or `texts.de`.
 
 ```yaml

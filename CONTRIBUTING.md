@@ -40,6 +40,10 @@ Several pull requests are usually open at once. Files that every change edits ma
 - Add tests as one block with their own section heading in `test/selftest.html`, and refer to demo setups by name, not by position in the list.
 - If a pull request still conflicts after another one was merged, merge `main` into the branch and keep both sides of each conflict; the maintainer can do this for you when "Allow edits by maintainers" is on.
 
+## Translations
+
+Languages are built into the card and may be partial. [docs/TRANSLATING.md](docs/TRANSLATING.md) explains where the texts live and how to add a language. `npm run i18n:check` (part of `npm run syntax`) verifies the language blocks and lists missing texts. Add a changelog fragment, do not edit `README.md`.
+
 ## Release contract
 
 `npm run release:check` verifies that `package.json`, `HFC_VERSION`, the HACS distribution filename and the changelog agree and that the changelog fragments are well-formed. On a tag build, the tag must be `v<version>` and no fragment may be left in `changelog.d/`. Before tagging, run `npm run changelog:compile` and rename the `## Unreleased` heading to the version.

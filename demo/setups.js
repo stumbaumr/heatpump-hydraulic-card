@@ -613,4 +613,82 @@ const setups = [
     },
   },
 ];
+// Synthetic PointT installation. Resource keys follow Home Comfort 0.8.2-beta.7;
+// gateway identifiers, entity ids and values are invented, not a registry export.
+function pointtSetup(scenario = 'heat', gateway = 'demo-pointt', suffix = '') {
+  const rows = [
+    ['sensor', 'heatSources:compressor:status', { heat: 'heating', dhw: 'dhw', defrost: 'defrost', idle: 'off', cool: 'cooling' }[scenario], '', { translation_key: 'compressor_status' }],
+    ['sensor', 'gateway:supply_temperature', scenario === 'dhw' ? 49 : 33, '°C'],
+    ['sensor', 'gateway:return_temperature', 28, '°C'],
+    ['sensor', 'gateway:outdoor_temperature', 6, '°C'],
+    ['sensor', 'gateway:modulation', scenario === 'idle' ? 0 : 42, '%'],
+    ['sensor', 'gateway:system_pressure', 1.7, 'bar'],
+    ['sensor', 'gateway:hot_water_temperature', 48, '°C'],
+    ['sensor', 'dhwCircuits:dhw1:currentSetpoint', 50, '°C'],
+    ['sensor', 'heatSources:hs1:heatPumpType', 'air_water'],
+    ['sensor', 'heatSources:hs1:numberOfStarts:total', 120],
+    ['sensor', 'heatSources:hs1:numberOfStarts:ch', 90],
+    ['sensor', 'heatSources:hs1:numberOfStarts:dhw', 30],
+    ['sensor', 'heatSources:hs1:numberOfStarts:cooling', 0],
+    ['sensor', 'heatSources:hs1:workingTime:total', 240, 'h'],
+    ['sensor', 'heatSources:hs1:workingTime:ch', 180, 'h'],
+    ['sensor', 'heatSources:hs1:workingTime:dhw', 60, 'h'],
+    ['sensor', 'heatSources:hs1:supplyFlowCondenserTemp', 32.5, '°C'],
+    ['sensor', 'heatSources:numberOfStarts', 135],
+    ['sensor', 'heatSources:workingTime:totalSystem', 500, 'h'],
+    ['sensor', 'heatSources:Source:eHeater:status', 'off'],
+    ['sensor', 'gateway:total_electricity', 400, 'kWh'],
+    ['sensor', 'gateway:total_heat_produced', 1600, 'kWh'],
+    ['sensor', 'gateway:environmental_energy', 1200, 'kWh'],
+    ['sensor', 'gateway:heating_electricity', 300, 'kWh'],
+    ['sensor', 'gateway:heating_heat_produced', 1200, 'kWh'],
+    ['sensor', 'gateway:hot_water_electricity', 100, 'kWh'],
+    ['sensor', 'gateway:hot_water_heat_produced', 400, 'kWh'],
+    ['sensor', 'heatSources:emon:totalConsumption:eheater', 0, 'kWh'],
+    ['sensor', 'heatSources:emon:coolingConsumption:compressor', 20, 'kWh'],
+    ['sensor', 'heatSources:emon:coolingConsumption:outputProduced', 80, 'kWh'],
+    ['binary_sensor', 'system_fault', scenario === 'idle' ? 'on' : 'off'],
+    ['binary_sensor', 'holiday_active', scenario === 'idle' ? 'on' : 'off'],
+    ...[1, 2].flatMap((n) => [
+      ['sensor', `heatingCircuits:hc${n}:currentRoomSetpoint`, 20 + n, '°C'],
+      ['sensor', `heatingCircuits:hc${n}:roomtemperature`, 19 + n, '°C'],
+      ['sensor', `heatingCircuits:hc${n}:actualSupplyTemperature`, 31 + n, '°C'],
+      ['select', `heatingCircuits:hc${n}:operationMode:control`, 'auto'],
+      ...['manualRoomSetpoint', 'temperatureLevels:comfort2', 'temperatureLevels:eco', 'maxFlowTemp']
+        .map((key) => ['number', `heatingCircuits:hc${n}:${key}:control`, 21, '°C']),
+    ]),
+    ['sensor', 'dhwCircuits:dhw2:actualTemp', 42, '°C'],
+    ['sensor', 'dhwCircuits:dhw2:currentSetpoint', 45, '°C'],
+    ['select', 'dhwCircuits:dhw1:operationMode:control', 'auto'],
+    ...['temperatureLevels:high', 'temperatureLevels:low', 'temperatureLevels:eco', 'singleChargeSetpoint']
+      .map((key) => ['number', `dhwCircuits:dhw1:${key}:control`, 50, '°C']),
+    ['number', 'dhwCircuits:dhw1:chargeDuration:control', 60, 'min'],
+    ['switch', 'dhwCircuits:dhw1:charge:control', 'off'],
+    ['switch', 'dhwCircuits:dhw1:reduceTempOnAlarm:control', 'on'],
+    ['select', 'system:silentMode:enabled:control', 'off'],
+    ['select', 'heatSources:additionalHeater:operationMode:control', 'off'],
+    ['select', 'system:seasonOptimizer:mode:control', 'auto'],
+    ['switch', 'system:awayMode:enabled:control', 'off'],
+  ];
+  const states = {}; const registry = {};
+  rows.forEach(([domain, key, value, unit, extra], n) => {
+    // Deliberately unrelated to the resource names: test renamed entities and mixed languages.
+    const id = `${domain}.pointt_${suffix}value_${n}`;
+    const attributes = { friendly_name: key.replace(/:/g, ' / '), ...(unit ? { unit_of_measurement: unit } : {}) };
+    if (domain === 'select') attributes.options = ['off', 'manual', 'auto'];
+    if (domain === 'number') Object.assign(attributes, { min: 5, max: 80, step: 0.5 });
+    if (unit === 'kWh' || unit === 'h' || key.includes(':numberOfStarts:')) attributes.state_class = 'total_increasing';
+    if (key === 'gateway:environmental_energy') attributes.state_class = 'total';
+    states[id] = { state: String(value), attributes };
+    registry[id] = { platform: 'bosch_buderus_heating', unique_id: `${gateway}:${key}`, device_id: `device-${gateway}`, ...extra };
+  });
+  return { states, registry };
+}
+setups.push({
+  name: 'Bosch/Buderus Home Comfort', sub: 'PointT cloud, synthetic data; preset awaiting installation testing',
+  states: (s) => pointtSetup(s).states, registry: pointtSetup().registry,
+  config: { preset: 'bosch_buderus_heating', title: 'Home Comfort', power_sources: 'manual',
+    tiles: ['energy:total', 'heat:total', 'env_energy:total', 'cop_total:total', 'starts:total', 'hours:total'] },
+});
+
 const scenarios = [['heat', 'Heating'], ['dhw', 'Hot water'], ['defrost', 'Defrost'], ['idle', 'Standby + error']];

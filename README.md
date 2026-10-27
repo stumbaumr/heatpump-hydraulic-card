@@ -75,7 +75,7 @@ The completed release history and the prioritized post-0.12.0 backlog are mainta
 - **Details drawer:** a collapsible section below the statistics with operating hours, total starts, total electricity, environmental energy and heat, the total COP, the **refrigerant circuit** (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling) and your own values (`details`). Presets fill it where the integration provides the data. Without a delivered-heat counter, total COP can use environmental energy plus electricity.
 - **Local diagnostic report:** the document button copies the resolved preset, entity mappings, states, units, errors and controls to the clipboard. Nothing is uploaded automatically.
 - **Full screen:** the expand button opens the same live card in a keyboard-accessible overlay; Escape, the close button or the backdrop returns to the dashboard.
-- **Languages:** English and German are built in. Additional languages and individual labels can be supplied with `texts`; missing labels fall back to English.
+- **Languages:** English and German are built in; further languages are welcome as a contribution, see [docs/TRANSLATING.md](docs/TRANSLATING.md). For your own wording or a language of your own, use `texts`; missing labels fall back to English.
 - **Card themes:** follow the Home Assistant theme (`auto`), or select the fixed `night` or `contrast` theme per card.
 - **Layouts and colours:** `layout: compact` for narrow columns, `layout: wide` puts controls, tiles and details beside the schematic, `layout: wall` adds large type and hides the quick controls until you touch the card (wall tablets). Every colour is a CSS variable (`--hfc-*`) that a theme or card-mod can change.
 - **Keyboard and screen readers:** every clickable part is a button you can reach with Tab, move through with the arrow keys and activate with Enter or Space; a focus frame shows where you are, and the parts of the schematic announce their name and value.
@@ -699,7 +699,9 @@ texts:
       cop_heating: COP verwarming
 ```
 
-Language codes must be lowercase (`nl`, `pt-br`). Values are treated as plain text and escaped before they are rendered. The stable key tree and placeholder rules are documented in [`docs/TEXTS.md`](docs/TEXTS.md). The visual editor preserves `texts`, but editing the nested map remains YAML-only.
+Language codes must be lowercase (`nl`, `pt-br`). Values are treated as plain text and escaped before they are rendered. The stable key tree and placeholder rules are documented in [`docs/TEXTS.md`](docs/TEXTS.md). The visual editor preserves `texts`, but editing the nested map remains YAML-only, and the editor itself stays English or German.
+
+Would you like your language built in for everybody, including the editor? Translations are welcome and can be partial: [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
 ### Diagnostic report
 
@@ -791,7 +793,7 @@ Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation fol
 Das Außengerät wird als vereinfachte, logofreie Zeichnung für Lambda, Viessmann, Vaillant, Bosch/Buderus, Panasonic, Saunier Duval oder Samsung dargestellt; bekannte Presets wählen die passende Familie automatisch, alle Stile lassen sich manuell auswählen.
 Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader.
 Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema), als Wanddisplay und im Vollbild; die festen Karten-Themes `night` und `contrast` ergänzen das automatische Dashboard-Theme.
-Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück.
+Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück; weitere eingebaute Sprachen sind als Beitrag willkommen (docs/TRANSLATING.md).
 Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper.
 Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt.
 Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet.

@@ -1,0 +1,40 @@
+name: Translation
+description: Add a new language to the card, or improve an existing translation.
+labels: [translation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping! A translation can be partial, every missing text falls back to English. How it works: [docs/TRANSLATING.md](https://github.com/Sturmi77/heatpump-hydraulic-card/blob/main/docs/TRANSLATING.md).
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      description: Name and code, for example Polish (pl) or Brazilian Portuguese (pt-br).
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is it about?
+      options:
+        - A new language
+        - Improving an existing translation (German)
+        - A text does not fit or is wrong
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you want to contribute?
+      options:
+        - I will open a pull request
+        - I will post the translated texts here (YAML), please add them
+        - I need help to get started
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Texts or notes
+      description: Paste the translated YAML (format in docs/TEXTS.md), name the text that is wrong, or ask your question. A screenshot helps for texts that do not fit.
