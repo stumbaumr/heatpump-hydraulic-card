@@ -2064,6 +2064,26 @@
     preset.remove();
   }
 
+  // 20c. radiator ribs take the flow and return colours: every gradient id is unique, the ribs use the coloured one
+  {
+    const p = 'panasonic_heat_pump';
+    const states = toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['33.5', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['27.5', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['30', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+    });
+    for (const hc_count of [1, 2]) {
+      const card = mount({ preset: 'heishamon', hc_type: 'radiator', hc_count }, hassOf(states)); await wait(20);
+      const root = card.shadowRoot;
+      const ids = [...root.querySelectorAll('[id]')].map((e) => e.id).filter((id) => id.startsWith('g-rad'));
+      check(ids.length === new Set(ids).size, `${hc_count} circuit(s): the radiator gradient ids are unique (${ids.join(', ')})`);
+      const rib = root.querySelector('rect.rib');
+      const grad = root.getElementById(rib.style.fill.match(/#([^"')]+)/)[1]);
+      const top = getComputedStyle(grad.querySelector('stop')).stopColor;
+      check(grad.querySelector('stop').id === 'g-rad-top' && top !== 'rgb(0, 0, 0)', `${hc_count} circuit(s): the radiator ribs show the flow colour, not black (${top})`);
+      card.remove();
+    }
+  }
+
   log.push(`${checks} checks, ${fails.length} failed`);
   document.getElementById('log').textContent = [...log, ...fails.map((f) => `FAIL ${f}`)].join('\n');
   document.getElementById('result').textContent = fails.length ? 'FAIL' : 'PASS';

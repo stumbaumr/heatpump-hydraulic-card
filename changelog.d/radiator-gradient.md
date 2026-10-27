@@ -1,0 +1,1 @@
+- Radiators and column radiators: the ribs show the flow and return colours again instead of black. The card defined the gradient `g-rad` twice (once for the whole card, once for circuit 1); the ribs used the second one, which never got a colour. Only the circuit's own gradient is left.
