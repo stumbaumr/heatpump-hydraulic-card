@@ -4777,7 +4777,6 @@ class HeatpumpFlowCard extends HTMLElement {
     const scaled = (seconds) => `${(seconds / speed).toFixed(2)}s`;
     // The dash speed is proportional to the flow rate: 1000 l/h is one dash cycle per second, sniffing a few l/h crawls.
     const dur = Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(1000 / vol, 0.4), 30) : (modOk ? 2.6 - mod * 1.8 : 2);
-    this.style.setProperty('--hfc-dur', scaled(dur));
     // A fan speed entity wins: the fan runs on after the compressor stops. Numeric values are rpm, else on/off.
     // An unavailable or unknown fan entity (integration offline, Home Assistant restart) counts as missing.
     const fanKnown = this._has('fan_speed') && !['unavailable', 'unknown'].includes(String(this._s('fan_speed')).toLowerCase());
@@ -4785,8 +4784,12 @@ class HeatpumpFlowCard extends HTMLElement {
     const fanOn = fanKnown ? (Number.isFinite(fanRpm) ? fanRpm > 0 : this._on('fan_speed')) : running;
     const fanDur = !fanOn ? 0 : Number.isFinite(fanRpm) ? Math.min(Math.max(2.4 - fanRpm / 500, 0.5), 2.4)
       : (modOk ? 2.4 - mod * 1.9 : Math.min(Math.max(2.4 - (power || 0) / 1500, 0.5), 2.4));
-    this.style.setProperty('--hfc-fan', scaled(fanDur));
-    this.style.setProperty('--hfc-pump', scaled(modOk ? 1.8 - mod * 1.2 : 1.2));
+    const pumpDur = modOk ? 1.8 - mod * 1.2 : 1.2;
+    // Flow dashes, fans and pumps change their speed with every new sensor value: they get it as a playback rate (_speeds).
+    this._speedDurs = {
+      flow: dur / speed, fan: fanDur / speed, pump: pumpDur / speed,
+      primary: (Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(800 / vol, 0.6), 30) : pumpDur) / speed,
+    };
     this.style.setProperty('--hfc-electrical', scaled(1.1));
     this.style.setProperty('--hfc-coil', scaled(1.4));
     this.style.setProperty('--hfc-snow', scaled(1.6));
@@ -4805,8 +4808,6 @@ class HeatpumpFlowCard extends HTMLElement {
     Object.entries(F.pipes).forEach(([id, on]) => pipe(id, on));
     // The primary pump's speed follows the flow rate, so a sniffing pump with a few l/h turns slowly.
     this._cls('impeller-primary', F.primaryPump);
-    const primary = this._$('impeller-primary');
-    if (primary) primary.style.animationDuration = Number.isFinite(vol) && vol > 0 ? scaled(Math.min(Math.max(800 / vol, 0.6), 30)) : '';
     if (P.series) {
       stroke('sb-vl', cFlow); stroke('sb-a', cFlow); stroke('sb-b', cRet);
       this._$('sb-arrow')?.setAttribute('d', bypass ? 'M600 481 V495 H586 M593 488 L586 495 L593 502' : 'M614 495 H586 M593 488 L586 495 L593 502');
@@ -5044,10 +5045,28 @@ class HeatpumpFlowCard extends HTMLElement {
       this._a11y(true);
       if (had !== undefined) box.querySelector(`[data-tile="${had}"]`)?.focus();
     }
+    this._speeds();
     this._updateControls();
     this._updateDrawer();
     this._updateTimeline();
     this._a11y();
+  }
+
+  // The speed-driven animations run for 1 s in the stylesheet; the card sets their speed as the playback rate, after the
+  // `on` classes of this update have started or stopped them. updatePlaybackRate() keeps the current position. A new
+  // animation-duration would move a running animation to another point of its cycle, so the flow dashes jumped with
+  // every new flow rate and seemed to flow backwards for a moment.
+  _speeds() {
+    const d = this._speedDurs;
+    if (!d) return;
+    const set = (el, seconds) => {
+      if (!el?.getAnimations || !(seconds > 0)) return;
+      el.getAnimations().forEach((a) => { if (a._hfcRate !== 1 / seconds) { a._hfcRate = 1 / seconds; a.updatePlaybackRate(1 / seconds); } });
+    };
+    const all = (sel) => this.shadowRoot.querySelectorAll(sel);
+    all('.flow').forEach((el) => set(el, d.flow));
+    all('.fan').forEach((el) => set(el, d.fan));
+    all('.impeller').forEach((el) => set(el, el.id === 'impeller-primary' ? d.primary : d.pump));
   }
 }
 
@@ -5118,7 +5137,7 @@ HeatpumpFlowCard.styles = `
   .blade { fill: var(--hfc-muted); opacity: .55; }
   .hub { fill: var(--hfc-muted); }
   .fan { transform-box: view-box; transform-origin: 170px 288px; }
-  .fan.on { animation: hfc-spin var(--hfc-fan, 1s) linear infinite; }
+  .fan.on { animation: hfc-spin 1s linear infinite; }
   .fan.on .blade { fill: ${hfcVar('cool')}; opacity: .9; }
   .snow { opacity: 0; }
   .snow-bg { fill: var(--card-background-color, #fff); opacity: .85; }
@@ -5133,7 +5152,7 @@ HeatpumpFlowCard.styles = `
   .pipe { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; stroke: color-mix(in srgb, var(--pc, var(--hfc-muted)) 22%, var(--card-background-color, #fff)); transition: stroke .5s; }
   .pipe.on { stroke: var(--pc, var(--hfc-muted)); }
   .flow { fill: none; stroke: ${hfcVar('flow-dash')}; stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 3 17; opacity: 0; pointer-events: none; }
-  .flow.on { opacity: 1; animation: hfc-dash var(--hfc-dur, 1.5s) linear infinite; }
+  .flow.on { opacity: 1; animation: hfc-dash 1s linear infinite; }
   .eline { fill: none; stroke-width: 4; stroke-linecap: round; opacity: .18; }
   .eline.pv { stroke: ${hfcVar('pv')}; } .eline.bat { stroke: ${hfcVar('battery')}; } .eline.grid { stroke: ${hfcVar('grid')}; }
   .eflow { fill: none; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 0.1 18; opacity: 0; pointer-events: none; }
@@ -5168,7 +5187,7 @@ HeatpumpFlowCard.styles = `
   .pump { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .imp { fill: var(--hfc-muted); }
   .impeller { transform-box: view-box; transform-origin: 720px 360px; }
-  .impeller.on { animation: hfc-spin var(--hfc-pump, 1.2s) linear infinite; }
+  .impeller.on { animation: hfc-spin 1s linear infinite; }
   .impeller.on .imp { fill: ${hfcVar('heat')}; }
   .house { fill: var(--secondary-background-color, rgba(127,127,127,.1)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; stroke-linejoin: round; }
   .screed { fill: var(--divider-color, rgba(127,127,127,.35)); }

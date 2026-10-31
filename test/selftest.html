@@ -1064,7 +1064,7 @@
     const rating = 'sensor.eu08l_hp1_compressor_unit_rating';
     const fanOf = async (extra, cfg = {}) => {
       const c = mount({ ...s.config, ...cfg }, hassWith(s, 'heat', extra)); await wait(20);
-      const r = [c.style.getPropertyValue('--hfc-fan'), c.style.getPropertyValue('--hfc-pump')]; c.remove(); return r;
+      const r = [`${c._speedDurs.fan.toFixed(2)}s`, `${c._speedDurs.pump.toFixed(2)}s`]; c.remove(); return r;
     };
     let r = await fanOf({});
     check(r[0] === '1.53s' && r[1] === '1.25s', `fan and pump follow the compressor modulation of 46 % (${r})`);
@@ -2597,13 +2597,13 @@
     check(r.entities.fan_speed === `sensor.${p}_main_fan1_motor_speed`, `HeishaMon fan speed from fan 1 (${r.entities.fan_speed})`);
     const fan = (c) => c.shadowRoot.getElementById('fan');
     let card = mount({ preset: 'heishamon' }, hassOf(st())); await wait(20);
-    check(fan(card).classList.contains('on') && parseFloat(card.style.getPropertyValue('--hfc-fan')) > 0, 'the fan runs on after the compressor stops');
+    check(fan(card).classList.contains('on') && card._speedDurs.fan > 0, 'the fan runs on after the compressor stops');
     card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: ['0', 'R/min'], [`sensor.${p}_main_compressor_freq`]: ['30', 'Hz'] })); await wait(5);
     check(!fan(card).classList.contains('on'), 'a fan speed of 0 stops the fan, also with the compressor running');
     card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: ['900', 'R/min'] })); await wait(5);
-    const fast = parseFloat(card.style.getPropertyValue('--hfc-fan'));
+    const fast = card._speedDurs.fan;
     card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: ['300', 'R/min'] })); await wait(5);
-    check(fast < parseFloat(card.style.getPropertyValue('--hfc-fan')), 'a higher fan speed turns the fan faster');
+    check(fast < card._speedDurs.fan, 'a higher fan speed turns the fan faster');
     for (const state of ['unavailable', 'unknown']) {
       card.hass = hassOf(st({ [`sensor.${p}_main_fan1_motor_speed`]: state, [`sensor.${p}_main_compressor_freq`]: ['30', 'Hz'] })); await wait(5);
       check(fan(card).classList.contains('on'), `a fan speed entity that is ${state} falls back to the running state (compressor on)`);
@@ -2649,20 +2649,20 @@
     // Sniffing: the compressor is off, the primary pump moves a few l/h. The water circulates slowly, the mode stays idle.
     card = mount({ preset: 'heishamon', hc_type: 'radiator' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: ['0.13', 'l/min'], [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] }))); await wait(20);
     const imp = q(card, '#impeller-primary');
-    check(imp.classList.contains('on') && parseFloat(imp.style.animationDuration) >= 29, `sniffing: the primary pump turns slowly (${imp.style.animationDuration})`);
+    check(imp.classList.contains('on') && card._speedDurs.primary >= 29, `sniffing: the primary pump turns slowly (${card._speedDurs.primary}s)`);
     check(q(card, '#p-vl').classList.contains('on') && q(card, '#p-rl').classList.contains('on') && q(card, '#p-hc-vl').classList.contains('on'), 'sniffing: the water circulates through the heating circuit');
-    check(q(card, '#t-vol').textContent === '8 l/h' && parseFloat(card.style.getPropertyValue('--hfc-dur')) >= 29, `sniffing: slow flow with its flow rate (${q(card, '#t-vol').textContent})`);
+    check(q(card, '#t-vol').textContent === '8 l/h' && card._speedDurs.flow >= 29, `sniffing: slow flow with its flow rate (${q(card, '#t-vol').textContent})`);
     check(!q(card, '#chip-mode').className.includes('mode-heat'), 'sniffing: the mode stays idle');
     check(!q(card, '#waves').classList.contains('on'), 'sniffing: the emitter gives off no heat');
     card.remove();
     card = mount({ preset: 'heishamon', hc_type: 'radiator' }, hassOf(st())); await wait(20);
-    check(parseFloat(q(card, '#impeller-primary').style.animationDuration) < 2, `heating: the primary pump turns at normal speed (${q(card, '#impeller-primary').style.animationDuration})`);
+    check(card._speedDurs.primary < 2, `heating: the primary pump turns at normal speed (${card._speedDurs.primary}s)`);
     check(q(card, '#waves').classList.contains('on'), 'heating: the emitter gives off heat');
     card.remove();
     // The flow dashes follow the pump: double the flow rate, half the cycle time.
     const durAt = async (lmin) => {
       card = mount({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_pump_flow`]: [lmin, 'l/min'] }))); await wait(20);
-      const d = parseFloat(card.style.getPropertyValue('--hfc-dur')); card.remove(); return d;
+      const d = +card._speedDurs.flow.toFixed(2); card.remove(); return d;
     };
     const d10 = await durAt('10'), d20 = await durAt('20');
     check(Math.abs(d10 / d20 - 2) < 0.05 && d10 < 2, `the flow speed is proportional to the flow rate (10 l/min ${d10}s, 20 l/min ${d20}s)`);
@@ -3603,6 +3603,44 @@
     check(!ed2._warn.innerHTML.includes(powerId) && !(ed2._disabled || []).length, 'without registry access nothing is listed');
     ed2.remove();
     check(!C._disabledMappings({ ...lux.config, entities: { power: 'sensor.own_power' } }, admin, [{ entity_id: powerId, ...powerReg }]).length, 'an own entity for the key hides the hint');
+  }
+
+  // Flow speed: a new flow rate changes the playback rate of the running dashes, so they keep their position and never step back
+  {
+    const p = 'panasonic_heat_pump';
+    const st = (lmin) => toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_pump_flow`]: [lmin, 'l/min'], [`sensor.${p}_main_z1_water_temp`]: ['-78', '°C'],
+    });
+    const card = mount({ preset: 'heishamon', hc_type: 'radiator', animations: 'always' }, hassOf(st('38'))); await wait(20);
+    const dash = card.shadowRoot.getElementById('f-vl');
+    const anim = () => dash.getAnimations()[0];
+    const css = card.shadowRoot.querySelector('style').textContent;
+    check(/\.flow\.on \{[^}]*hfc-dash 1s/.test(css) && /\.fan\.on \{[^}]*hfc-spin 1s/.test(css) && /\.impeller\.on \{[^}]*hfc-spin 1s/.test(css),
+      'flow dashes, fans and pumps run for 1 s in the stylesheet; the card sets their speed');
+    if (!anim()) check(false, 'the flow dashes animate with animations: always');
+    else {
+      await anim().ready;
+      const rate = (lmin) => 1 / Math.min(Math.max(1000 / (lmin * 60), 0.4), 30);
+      check(Math.abs(anim().playbackRate - rate(38)) < 0.01, `the playback rate follows the flow rate (${anim().playbackRate.toFixed(3)}, expected ${rate(38).toFixed(3)})`);
+      const offset = () => parseFloat(getComputedStyle(dash).strokeDashoffset);
+      const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      // A small change of the flow rate, as a heat pump reports it every few seconds. The dashes move by -40 per cycle; a step
+      // backwards is a positive change of the offset, a jump a change of more than a few units within two frames.
+      const steps = [];
+      for (const lmin of ['37.5', '40', '38.3', '36', '38']) {
+        anim().pause(); await anim().ready; const before = offset(); const same = anim();
+        card.hass = hassOf(st(lmin)); await wait(5);
+        await anim().ready;
+        steps.push(+(offset() - before).toFixed(2));
+        check(anim() === same, `a new flow rate keeps the running animation (${lmin} l/min)`);
+        check(Math.abs(anim().playbackRate - rate(+lmin)) < 0.01, `the playback rate follows ${lmin} l/min (${anim().playbackRate.toFixed(3)})`);
+        anim().play(); await frames();
+      }
+      check(steps.every((d) => Math.abs(d) < 0.01), `a new flow rate does not move the dashes (offset changes ${steps.join(', ')})`);
+    }
+    card.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);
